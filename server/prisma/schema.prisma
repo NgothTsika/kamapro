@@ -11,6 +11,7 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   username     String   @unique
+  avatar       String?
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -23,9 +24,12 @@ model User {
   language       String?
   offlineEnabled Boolean @default(false)
 
+  // Email verification
+  emailVerified Boolean @default(false)
+
   // Relations
   completedLessons    CompletedLesson[]
-  quizAttempts        QuizAttempt[]
+  quizSessions        QuizSession[]
   collectedCharacters CollectedCharacter[]
   userSubmissions     ContentSubmission[]
   contentReports      ContentReport[]      @relation("reporter") // user is reporter
@@ -34,6 +38,25 @@ model User {
   collections         Collection[]
   userAchievements    UserAchievement[]
   pushTokens          PushToken[]
+  gameMatchesPlayer1  GameMatch[]          @relation("player1")
+  gameMatchesPlayer2  GameMatch[]          @relation("player2")
+  gameMatchesWinner   GameMatch[]          @relation("winner")
+  userProgress        UserProgress[]
+  readingGoal         ReadingGoal?
+  dailyActivities     DailyActivity[]
+  lessonFeedback      LessonFeedback[]
+  
+  // New relations
+  sessions          Session[]
+  leaderboard       Leaderboard?
+  notifications     Notification[]
+  searchHistory     SearchHistory[]
+  userAnalytics     UserAnalytics?
+  comments          Comment[]
+  auditLogs         AuditLog[]            @relation("adminLogs")
+  followers         UserFollow[]          @relation("following")
+  following         UserFollow[]          @relation("follower")
+  bookmarks         Bookmark[]
 }
 
 enum UserRole {
@@ -44,22 +67,25 @@ enum UserRole {
 
 // ---------- Content Models ----------
 model Category {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  slug        String   @unique
-  description String?
-  icon        String?
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  name         String   @unique
+  coverImage   String?
+  slug         String   @unique
+  description  String?
+  icon         String?
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  lessons    Lesson[]
-  characters Character[]
+  lessons     Lesson[]
+  characters  Character[]
+  submissions ContentSubmission[]
 }
 
 model Lesson {
   id          String   @id @default(cuid())
   title       String
+  coverImage  String?
   slug        String   @unique
   description String?
   content     String // HTML or markdown
@@ -74,6 +100,9 @@ model Lesson {
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
+  topicId String?
+  topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
   deepDiveContent String?
 
   // Self‑relations (many-to-many via junction tables)
@@ -82,6 +111,7 @@ model Lesson {
   followUps       LessonFollowUp[]     @relation("LessonFollowUps_lesson")
   followUpFor     LessonFollowUp[]     @relation("LessonFollowUps_followUp")
 
+  chapters         Chapter[]
   quizzes          Quiz[]
   translations     LessonTranslation[]
   completedBy      CompletedLesson[]
@@ -89,6 +119,27 @@ model Lesson {
   offlineContent   OfflineContent[]
   collectionItems  CollectionItem[]
   unlocksCharacter Character?
+  userProgress     UserProgress[]
+  lessonFeedback   LessonFeedback[]
+  comments         Comment[]
+  bookmarks        Bookmark[]
+}
+
+model Chapter {
+  id               String   @id @default(cuid())
+  lessonId         String
+  lesson           Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title            String
+  coverImage       String?
+  content          String
+  mediaType        String? // "image", "video", "none"
+  mediaUrl         String?
+  feedbackQuestion String?
+  order            Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  userProgress UserProgress[]
 }
 
 // Many‑to‑many self‑relation junction tables (explicit)
@@ -127,39 +178,69 @@ model LessonTranslation {
 }
 
 model Quiz {
-  id            String  @id @default(cuid())
-  lessonId      String
-  lesson        Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  question      String
-  options       Json // array of strings
-  correctOption Int
-  explanation   String?
-  order         Int     @default(0)
+  id               String   @id @default(cuid())
+  lessonId         String
+  lesson           Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  question         String
+  options          Json // array of strings
+  correctOption    Int
+  explanation      String?
+  order            Int      @default(0)
+  heartLimit       Int      @default(4)
+  timeLimitSeconds Int?
+  difficulty       String? // "easy", "medium", "hard"
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  isActive Boolean  @default(true) // Enable/disable quizzes
+  tags     String[] // For filtering
+
+  topicId String?
+  topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  sessions   QuizSession[]
+  gameRounds GameRound[]
+  attempts   QuizAttempt[]
+}
+
+model QuizSession {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quizId          String
+  quiz            Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  heartsRemaining Int
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  passed          Boolean?
 
   attempts QuizAttempt[]
 }
 
 model QuizAttempt {
-  id             String   @id @default(cuid())
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  quizId         String
-  quiz           Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  id             String      @id @default(cuid())
+  sessionId      String
+  session        QuizSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionId     String
+  quiz           Quiz        @relation(fields: [questionId], references: [id])
   selectedOption Int
   isCorrect      Boolean
-  createdAt      DateTime @default(now())
+  heartLost      Boolean     @default(false)
+  createdAt      DateTime    @default(now())
 }
 
 model Character {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  description String
-  imageUrl    String?
-  story       String?
-  xpThreshold Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  description    String
+  imageUrl       String?
+  inventionImage String?
+  story          String?
+  xpThreshold    Int?
+  rarityLevel    String? // "common", "rare", "legendary"
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -203,7 +284,33 @@ model CollectedCharacter {
   character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
   collectedAt DateTime  @default(now())
 
+  // Character card details
+  characterCard CharacterCard?
+
   @@unique([userId, characterId])
+}
+
+// ---------- Character Cards (Unlocked after completing lesson & quiz) ----------
+model CharacterCard {
+  id                   String             @id @default(cuid())
+  collectedCharacterId String             @unique
+  collectedCharacter   CollectedCharacter @relation(fields: [collectedCharacterId], references: [id], onDelete: Cascade)
+
+  // Inventor/Character Information
+  inventorName         String
+  inventionName        String
+  inventionDescription String?
+  inventionImage       String? // Image of the invention
+  characterImage       String? // Image of the character (can be same as Character.imageUrl)
+
+  // Additional card details
+  year         String?
+  country      String?
+  achievements Json? // JSON array of achievements
+  impact       Json? // Structured impact information
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ---------- Community & Missing Features ----------
@@ -211,7 +318,8 @@ model ContentSubmission {
   id             String           @id @default(cuid())
   userId         String
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type           String // "figure", "invention", "event"
+  categoryId     String
+  category       Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   title          String
   description    String
   content        String?
@@ -316,6 +424,124 @@ model UserAchievement {
   @@unique([userId, achievementId])
 }
 
+// ---------- Feedback & Rating System ----------
+model LessonFeedback {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  rating    Int // 1-5 stars
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+}
+
+// ---------- Topics & Subcategories (for 1v1 games) ----------
+model Topic {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  parentId    String?
+  parent      Topic?   @relation("TopicSubcategories", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Topic[]  @relation("TopicSubcategories")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  quizzes     Quiz[]
+  gameMatches GameMatch[]
+  lessons     Lesson[]
+}
+
+// ---------- 1v1 Games ----------
+model GameMatch {
+  id            String      @id @default(cuid())
+  player1Id     String
+  player1       User        @relation("player1", fields: [player1Id], references: [id], onDelete: Cascade)
+  player2Id     String
+  player2       User        @relation("player2", fields: [player2Id], references: [id], onDelete: Cascade)
+  winnerId      String?
+  winner        User?       @relation("winner", fields: [winnerId], references: [id], onDelete: SetNull)
+  heartsPlayer1 Int         @default(3)
+  heartsPlayer2 Int         @default(3)
+  status        MatchStatus @default(WAITING)
+  startedAt     DateTime    @default(now())
+  endedAt       DateTime?
+  topicId       String?
+  topic         Topic?      @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  quizPool      Json?
+
+  playerCount Int @default(2) // For future 3+ player games
+  maxRounds   Int @default(5) // Customize game length
+
+  rounds GameRound[]
+}
+
+enum MatchStatus {
+  WAITING
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+model GameRound {
+  id               String    @id @default(cuid())
+  matchId          String
+  match            GameMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  questionId       String
+  question         Quiz      @relation(fields: [questionId], references: [id])
+  player1Answer    Int?
+  player2Answer    Int?
+  player1Correct   Boolean?
+  player2Correct   Boolean?
+  player1HeartLost Boolean?
+  player2HeartLost Boolean?
+  order            Int
+  createdAt        DateTime  @default(now())
+}
+
+// ---------- User Progress (Resume) ----------
+model UserProgress {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  chapterId String
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  position  Int? // optional scroll position
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+}
+
+// ---------- Reading Goals & Activity ----------
+model ReadingGoal {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyMinutes Int      @default(5)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model DailyActivity {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime @default(now()) @db.Date
+  minutesRead Int      @default(0)
+  goalMet     Boolean?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, date])
+}
+
+// ---------- Push Notifications ----------
 model PushToken {
   id        String   @id @default(cuid())
   userId    String
@@ -323,4 +549,126 @@ model PushToken {
   token     String   @unique
   platform  String // "ios", "android"
   createdAt DateTime @default(now())
+}
+
+// ---------- Session Management ----------
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
+
+// ---------- Leaderboards/Rankings ----------
+model Leaderboard {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  totalXp           Int      @default(0)
+  rank              Int?
+  streakRecord      Int      @default(0)
+  lessonsCompleted  Int      @default(0)
+  charactersCollected Int    @default(0)
+  gamesWon          Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  @@index([totalXp])
+}
+
+// ---------- Notifications ----------
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // "achievement", "gameInvite", "lessonUnlocked", "characterUnlocked", "milestone"
+  title     String
+  message   String
+  data      Json?    // Additional metadata
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+// ---------- Search History ----------
+model SearchHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  query     String
+  results   Int      // Number of results returned
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ---------- User Analytics ----------
+model UserAnalytics {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonsStarted       Int      @default(0)
+  lessonsCompleted     Int      @default(0)
+  averageCompletionTime Int?    // in minutes
+  favoriteCategory     String?
+  lastActiveAt         DateTime?
+  updatedAt            DateTime @updatedAt
+}
+
+// ---------- Comments/Discussion ----------
+model Comment {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  content   String
+  likes     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lessonId, createdAt])
+}
+
+// ---------- Admin Audit Logs ----------
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  admin     User     @relation("adminLogs", fields: [adminId], references: [id], onDelete: Cascade)
+  action    String   // "delete_lesson", "ban_user", "approve_submission", "reject_submission"
+  entityType String  // "lesson", "user", "submission", "comment"
+  entityId  String
+  changes   Json?    // What changed
+  createdAt DateTime @default(now())
+
+  @@index([adminId, createdAt])
+}
+
+// ---------- Social Features - Follow System ----------
+model UserFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+// ---------- Bookmarks/Favorites ----------
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, lessonId])
 }

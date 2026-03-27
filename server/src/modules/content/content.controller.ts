@@ -2,8 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/http";
+import { contentAdminRouter } from "./content-admin.controller";
 
 export const contentRouter = Router();
+contentRouter.use(contentAdminRouter);
 
 contentRouter.get(
   "/categories",

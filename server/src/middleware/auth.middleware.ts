@@ -25,6 +25,7 @@ export const requireAuth = async (
           id: true,
           email: true,
           username: true,
+          role: true,
           language: true,
         },
       },

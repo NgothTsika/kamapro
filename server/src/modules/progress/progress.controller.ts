@@ -105,9 +105,29 @@ progressRouter.post(
 
       // Only grant xp the first time; updating completion won't double-award.
       if (!alreadyCompleted) {
+        // Update streak: increment if completed today, reset if > 1 day ago
+        const now = new Date();
+        const lastActivityDate = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24 hours ago
+
+        const user = await tx.user.findUnique({
+          where: { id: req.user!.id },
+          select: { lastActive: true, streak: true },
+        });
+
+        let newStreak = 1;
+        if (user?.lastActive && user.lastActive > lastActivityDate) {
+          // Completed within 24 hours, increment streak
+          newStreak = (user.streak ?? 0) + 1;
+        }
+        // else: Reset to 1 if more than 24 hours
+
         const updatedUser = await tx.user.update({
           where: { id: req.user!.id },
-          data: { xp: { increment: xpEarned } },
+          data: {
+            xp: { increment: xpEarned },
+            streak: newStreak,
+            lastActive: now,
+          },
         });
 
         // Ensure leaderboard row exists.
@@ -125,41 +145,79 @@ progressRouter.post(
               { streakRequired: { lte: updatedUser.streak } },
             ],
           },
-          select: { id: true },
+          select: { id: true, name: true, icon: true },
         });
 
         for (const a of eligibleAchievements) {
-          await tx.userAchievement.upsert({
+          const existing = await tx.userAchievement.findUnique({
             where: {
               userId_achievementId: {
                 userId: req.user!.id,
                 achievementId: a.id,
               },
             },
-            create: {
-              userId: req.user!.id,
-              achievementId: a.id,
-            },
-            update: {},
           });
+
+          if (!existing) {
+            // New achievement unlocked
+            await tx.userAchievement.create({
+              data: {
+                userId: req.user!.id,
+                achievementId: a.id,
+              },
+            });
+
+            // Create notification for new achievement
+            await tx.notification.create({
+              data: {
+                userId: req.user!.id,
+                type: "ACHIEVEMENT_UNLOCKED",
+                title: `Achievement Unlocked: ${a.name}`,
+                message: `You've unlocked the "${a.name}" achievement!`,
+              },
+            });
+          }
         }
 
         // Unlock character (if the lesson unlocks one) on first completion only.
         const unlockedCharacterId = lesson.unlocksCharacter?.id;
         if (unlockedCharacterId) {
-          await tx.collectedCharacter.upsert({
+          const existingCollection = await tx.collectedCharacter.findUnique({
             where: {
               userId_characterId: {
                 userId: req.user!.id,
                 characterId: unlockedCharacterId,
               },
             },
-            create: {
-              userId: req.user!.id,
-              characterId: unlockedCharacterId,
-            },
-            update: {},
+            select: { id: true },
           });
+
+          if (!existingCollection) {
+            // New character unlocked
+            await tx.collectedCharacter.create({
+              data: {
+                userId: req.user!.id,
+                characterId: unlockedCharacterId,
+              },
+            });
+
+            // Get character info for notification
+            const character = await tx.character.findUnique({
+              where: { id: unlockedCharacterId },
+              select: { name: true },
+            });
+
+            if (character) {
+              await tx.notification.create({
+                data: {
+                  userId: req.user!.id,
+                  type: "CHARACTER_UNLOCKED",
+                  title: "New Character Unlocked!",
+                  message: `You've unlocked a new character: ${character.name}`,
+                },
+              });
+            }
+          }
         }
       }
     });
@@ -246,7 +304,9 @@ progressRouter.post(
     const { date, minutesRead, goalMet } = bodySchema.parse(req.body);
 
     const day = date ? new Date(date) : new Date();
-    const dayOnly = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
+    const dayOnly = new Date(
+      Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
+    );
 
     const activity = await prisma.dailyActivity.upsert({
       where: {
@@ -275,7 +335,8 @@ progressRouter.get(
   "/collected-characters",
   requireAuth,
   asyncHandler(async (req, res) => {
-    const language = typeof req.query.language === "string" ? req.query.language : undefined;
+    const language =
+      typeof req.query.language === "string" ? req.query.language : undefined;
 
     if (language) {
       const collected = await prisma.collectedCharacter.findMany({
@@ -312,7 +373,12 @@ progressRouter.get(
           return {
             ...cc,
             character: t
-              ? { ...cc.character, name: t.name, description: t.description, story: t.story }
+              ? {
+                  ...cc.character,
+                  name: t.name,
+                  description: t.description,
+                  story: t.story,
+                }
               : cc.character,
           };
         }),
@@ -354,7 +420,9 @@ progressRouter.get(
       orderBy: { collectedAt: "desc" },
       include: {
         characterCard: true,
-        character: { select: { id: true, slug: true, name: true, imageUrl: true } },
+        character: {
+          select: { id: true, slug: true, name: true, imageUrl: true },
+        },
       },
     });
 
@@ -450,11 +518,18 @@ progressRouter.get(
       where: { userId: req.user!.id },
       orderBy: { syncedAt: "desc" },
       include: {
-        lesson: { select: { id: true, slug: true, title: true, content: true, coverImage: true } },
+        lesson: {
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+            content: true,
+            coverImage: true,
+          },
+        },
       },
     });
 
     res.status(200).json({ lessons });
   }),
 );
-

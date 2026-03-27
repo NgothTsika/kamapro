@@ -24,7 +24,7 @@ gameRouter.post(
     const match = await prisma.gameMatch.create({
       data: {
         player1Id: req.user!.id,
-        player2Id: req.user!.id, // will be overwritten on join (see below)
+        player2Id: undefined, // Waiting for another player to join
         winnerId: null,
         status: "WAITING",
         topicId: topicId ?? null,
@@ -36,10 +36,7 @@ gameRouter.post(
       },
     });
 
-    // Immediately null-out player2Id to represent "not joined yet".
-    // Prisma model has non-null player2Id; so we use CANCELLED/WAITING semantics.
-    // For correctness, we create join endpoint to enforce player2Id replacement.
-    res.status(201).json({ matchId: match.id });
+    res.status(201).json({ matchId: match.id, status: "WAITING" });
   }),
 );
 
@@ -48,12 +45,14 @@ const joinMatchBodySchema = z.object({
 });
 
 gameRouter.post(
-  "/matches/join",
+  "/matches/:matchId/join",
   requireAuth,
   asyncHandler(async (req, res) => {
-    const body = joinMatchBodySchema.parse(req.body);
+    const paramsSchema = z.object({ matchId: z.string().min(1) });
+    const { matchId } = paramsSchema.parse(req.params);
+
     const match = await prisma.gameMatch.findUnique({
-      where: { id: body.matchId },
+      where: { id: matchId },
       select: {
         id: true,
         status: true,
@@ -69,14 +68,81 @@ gameRouter.post(
     if (match.player1Id === req.user!.id) {
       throw new HttpError(400, "You cannot join your own match");
     }
+    if (match.player2Id !== null) {
+      throw new HttpError(400, "Match is already full");
+    }
 
-    // We replace player2Id in WAITING state; schema makes player2Id required.
+    // Assign player2
     const updated = await prisma.gameMatch.update({
       where: { id: match.id },
       data: { player2Id: req.user!.id },
+      include: {
+        player1: { select: { id: true, username: true } },
+        player2: { select: { id: true, username: true } },
+      },
     });
 
     res.status(200).json({ match: updated });
+  }),
+);
+
+// Auto-matchmaking: Find waiting match or create one
+gameRouter.post(
+  "/matches/quickplay",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const bodySchema = z.object({
+      topicId: z.string().optional(),
+      quizPool: z.array(z.string().min(1)).min(1),
+      maxRounds: z.number().int().min(1).max(50).optional(),
+    });
+
+    const body = bodySchema.parse(req.body);
+    const { quizPool, topicId } = body;
+
+    // Try to find a waiting match with the same topic
+    const waitingMatch = await prisma.gameMatch.findFirst({
+      where: {
+        status: "WAITING",
+        player2Id: undefined,
+        player1Id: { not: req.user!.id },
+        topicId: topicId ?? null,
+      },
+    });
+
+    if (waitingMatch) {
+      // Join existing match
+      const joined = await prisma.gameMatch.update({
+        where: { id: waitingMatch.id },
+        data: { player2Id: req.user!.id },
+        include: {
+          player1: { select: { id: true, username: true } },
+          player2: { select: { id: true, username: true } },
+        },
+      });
+      return res.status(200).json({ match: joined, isNew: false });
+    }
+
+    // No waiting match, create a new one
+    const newMatch = await prisma.gameMatch.create({
+      data: {
+        player1Id: req.user!.id,
+        player2Id: undefined,
+        winnerId: null,
+        status: "WAITING",
+        topicId: topicId ?? null,
+        quizPool: quizPool.length <= 100 ? quizPool : quizPool.slice(0, 100),
+        maxRounds: body.maxRounds ?? 5,
+        playerCount: 2,
+        heartsPlayer1: 3,
+        heartsPlayer2: 3,
+      },
+      include: {
+        player1: { select: { id: true, username: true } },
+      },
+    });
+
+    res.status(201).json({ match: newMatch, isNew: true });
   }),
 );
 
@@ -93,12 +159,19 @@ gameRouter.post(
         status: true,
         quizPool: true,
         maxRounds: true,
+        player1Id: true,
+        player2Id: true,
       },
     });
 
     if (!match) throw new HttpError(404, "Match not found");
     if (match.status !== "WAITING" && match.status !== "IN_PROGRESS") {
       throw new HttpError(400, "Match cannot be started");
+    }
+
+    // Both players must be present to start
+    if (!match.player2Id) {
+      throw new HttpError(400, "Waiting for second player to join");
     }
 
     const quizPool = (match.quizPool ?? []) as unknown[];
@@ -234,8 +307,12 @@ gameRouter.post(
       });
 
       // Update match hearts.
-      const heartsPlayer1 = isPlayer1 ? match.heartsPlayer1 - (correct ? 0 : 1) : match.heartsPlayer1;
-      const heartsPlayer2 = !isPlayer1 ? match.heartsPlayer2 - (correct ? 0 : 1) : match.heartsPlayer2;
+      const heartsPlayer1 = isPlayer1
+        ? match.heartsPlayer1 - (correct ? 0 : 1)
+        : match.heartsPlayer1;
+      const heartsPlayer2 = !isPlayer1
+        ? match.heartsPlayer2 - (correct ? 0 : 1)
+        : match.heartsPlayer2;
 
       const updatedMatch = await tx.gameMatch.update({
         where: { id: matchId },
@@ -326,4 +403,3 @@ gameRouter.get(
     res.status(200).json({ match });
   }),
 );
-

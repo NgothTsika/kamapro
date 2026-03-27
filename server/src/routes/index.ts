@@ -11,6 +11,10 @@ import { searchRouter } from "../modules/search/search.controller";
 import { moderationRouter } from "../modules/moderation/moderation.controller";
 import { feedbackRouter } from "../modules/feedback/feedback.controller";
 import { quizRouter } from "../modules/quiz/quiz.controller";
+import { collectionsRouter } from "../modules/collections/collections.controller";
+import { pushRouter } from "../modules/push/push.controller";
+import { achievementsRouter } from "../modules/achievements/achievements.controller";
+import { usersRouter } from "../modules/users/users.controller";
 
 export const apiRouter = Router();
 
@@ -26,3 +30,7 @@ apiRouter.use("/search", searchRouter);
 apiRouter.use("/moderation", moderationRouter);
 apiRouter.use("/feedback", feedbackRouter);
 apiRouter.use("/quiz", quizRouter);
+apiRouter.use("/collections", collectionsRouter);
+apiRouter.use("/push", pushRouter);
+apiRouter.use("/achievements", achievementsRouter);
+apiRouter.use("/users", usersRouter);

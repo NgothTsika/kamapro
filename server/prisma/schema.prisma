@@ -461,8 +461,8 @@ model GameMatch {
   id            String      @id @default(cuid())
   player1Id     String
   player1       User        @relation("player1", fields: [player1Id], references: [id], onDelete: Cascade)
-  player2Id     String
-  player2       User        @relation("player2", fields: [player2Id], references: [id], onDelete: Cascade)
+  player2Id     String?
+  player2       User?       @relation("player2", fields: [player2Id], references: [id], onDelete: Cascade)
   winnerId      String?
   winner        User?       @relation("winner", fields: [winnerId], references: [id], onDelete: SetNull)
   heartsPlayer1 Int         @default(3)

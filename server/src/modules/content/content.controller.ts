@@ -4,6 +4,30 @@ import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/http";
 import { contentAdminRouter } from "./content-admin.controller";
 
+/** Merge localized quiz copy when `translations` was loaded for a single language; strip `translations` from the payload. */
+function applyQuizLanguage<
+  T extends {
+    question: string;
+    options: unknown;
+    explanation: string | null;
+    translations?:
+      | { question: string; options: unknown; explanation: string | null }[]
+      | false
+      | null;
+  },
+>(quiz: T): Omit<T, "translations"> {
+  const list = quiz.translations;
+  const tr = Array.isArray(list) && list.length > 0 ? list[0] : null;
+  const { translations: _t, ...rest } = quiz;
+  if (!tr) return rest;
+  return {
+    ...rest,
+    question: tr.question,
+    options: tr.options,
+    explanation: tr.explanation,
+  } as Omit<T, "translations">;
+}
+
 export const contentRouter = Router();
 contentRouter.use(contentAdminRouter);
 
@@ -149,6 +173,13 @@ contentRouter.get(
             difficulty: true,
             tags: true,
             topicId: true,
+            translations: language
+              ? {
+                  where: { language },
+                  take: 1,
+                  select: { question: true, options: true, explanation: true },
+                }
+              : false,
           },
         },
         translations: language
@@ -177,7 +208,15 @@ contentRouter.get(
         }
       : lesson;
 
-    res.status(200).json({ lesson: normalized });
+    const withQuizzes =
+      language && Array.isArray(normalized.quizzes)
+        ? {
+            ...normalized,
+            quizzes: normalized.quizzes.map((q) => applyQuizLanguage(q)),
+          }
+        : normalized;
+
+    res.status(200).json({ lesson: withQuizzes });
   }),
 );
 
@@ -300,6 +339,7 @@ contentRouter.get(
   asyncHandler(async (req, res) => {
     const paramsSchema = z.object({ lessonId: z.string().min(1) });
     const { lessonId } = paramsSchema.parse(req.params);
+    const language = typeof req.query.language === "string" ? req.query.language : undefined;
 
     const quizzes = await prisma.quiz.findMany({
       where: { lessonId, isActive: true },
@@ -314,11 +354,20 @@ contentRouter.get(
         difficulty: true,
         tags: true,
         topicId: true,
+        translations: language
+          ? {
+              where: { language },
+              take: 1,
+              select: { question: true, options: true, explanation: true },
+            }
+          : false,
         // Do NOT return correctOption to the client by default.
       },
     });
 
-    res.status(200).json({ quizzes });
+    const payload = language ? quizzes.map((q) => applyQuizLanguage(q)) : quizzes;
+
+    res.status(200).json({ quizzes: payload });
   }),
 );
 
@@ -331,6 +380,57 @@ contentRouter.get(
 
     const character = await prisma.character.findUnique({
       where: { slug },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        story: true,
+        imageUrl: true,
+        inventionImage: true,
+        xpThreshold: true,
+        rarityLevel: true,
+        category: { select: { id: true, slug: true, name: true } },
+        unlockLesson: { select: { id: true, slug: true } },
+        collectedBy: false,
+        translations: language
+          ? {
+              where: { language },
+              take: 1,
+              select: { name: true, description: true, story: true },
+            }
+          : false,
+      },
+    });
+
+    if (!character) return res.status(404).json({ error: "Character not found" });
+
+    const translation = language && Array.isArray(character.translations)
+      ? character.translations[0]
+      : null;
+
+    res.status(200).json({
+      character: translation
+        ? {
+            ...character,
+            name: translation.name,
+            description: translation.description,
+            story: translation.story,
+          }
+        : character,
+    });
+  }),
+);
+
+contentRouter.get(
+  "/characters/:characterId",
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ characterId: z.string().min(1) });
+    const { characterId } = paramsSchema.parse(req.params);
+    const language = typeof req.query.language === "string" ? req.query.language : undefined;
+
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
       select: {
         id: true,
         slug: true,

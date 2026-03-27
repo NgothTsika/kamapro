@@ -201,6 +201,20 @@ model Quiz {
   sessions   QuizSession[]
   gameRounds GameRound[]
   attempts   QuizAttempt[]
+  translations QuizTranslation[]
+}
+
+model QuizTranslation {
+  id          String   @id @default(cuid())
+  quizId      String
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  language    String
+  question    String
+  options     Json
+  explanation String?
+  createdAt   DateTime @default(now())
+
+  @@unique([quizId, language])
 }
 
 model QuizSession {
@@ -262,6 +276,8 @@ model CharacterTranslation {
 
   characterId String
   character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, language])
 }
 
 model CompletedLesson {

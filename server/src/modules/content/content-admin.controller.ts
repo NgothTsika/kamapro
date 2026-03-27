@@ -388,7 +388,13 @@ contentAdminRouter.get(
         category: { select: { id: true, name: true, slug: true } },
         topic: { select: { id: true, name: true, slug: true } },
         chapters: { orderBy: { order: "asc" } },
-        quizzes: { orderBy: { order: "asc" } },
+        quizzes: {
+          orderBy: { order: "asc" },
+          include: {
+            translations: { orderBy: [{ language: "asc" }, { createdAt: "desc" }] },
+          },
+        },
+        translations: { orderBy: [{ language: "asc" }, { createdAt: "desc" }] },
       },
     });
 
@@ -812,6 +818,341 @@ contentAdminRouter.delete(
   }),
 );
 
+// ---------- Quiz translations ----------
+contentAdminRouter.get(
+  "/admin/quizzes/:quizId/translations",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ quizId: z.string().min(1) });
+    const { quizId } = paramsSchema.parse(req.params);
+
+    const translations = await prisma.quizTranslation.findMany({
+      where: { quizId },
+      orderBy: [{ language: "asc" }, { createdAt: "desc" }],
+    });
+
+    res.status(200).json({ translations });
+  }),
+);
+
+contentAdminRouter.post(
+  "/admin/quizzes/:quizId/translations",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ quizId: z.string().min(1) });
+    const { quizId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      language: z.string().min(2).max(10),
+      question: z.string().min(1),
+      options: z.array(z.string()).min(2),
+      explanation: z.string().optional().nullable(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const quiz = await prisma.quiz.findUnique({
+      where: { id: quizId },
+      select: { id: true, options: true, correctOption: true },
+    });
+    if (!quiz) throw new HttpError(404, "Quiz not found");
+
+    const baseOptions = quiz.options as unknown as string[];
+    if (body.options.length !== baseOptions.length) {
+      throw new HttpError(
+        400,
+        `Translated options must have the same length as the base quiz (${baseOptions.length})`,
+      );
+    }
+    if (quiz.correctOption >= body.options.length) {
+      throw new HttpError(400, "Base quiz correctOption index is invalid");
+    }
+
+    const existing = await prisma.quizTranslation.findFirst({
+      where: { quizId, language: body.language },
+      select: { id: true },
+    });
+    if (existing) throw new HttpError(409, "Translation for this language already exists");
+
+    const translation = await prisma.quizTranslation.create({
+      data: {
+        quizId,
+        language: body.language,
+        question: body.question.trim(),
+        options: body.options,
+        explanation: body.explanation ?? undefined,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "create_quiz_translation",
+        entityType: "quiz_translation",
+        entityId: translation.id,
+        changes: jsonChanges({ quizId, language: translation.language }),
+      },
+    });
+
+    res.status(201).json({ translation });
+  }),
+);
+
+contentAdminRouter.patch(
+  "/admin/quiz-translations/:translationId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ translationId: z.string().min(1) });
+    const { translationId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      language: z.string().min(2).max(10).optional(),
+      question: z.string().min(1).optional(),
+      options: z.array(z.string()).min(2).optional(),
+      explanation: z.string().optional().nullable(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const existing = await prisma.quizTranslation.findUnique({
+      where: { id: translationId },
+      include: {
+        quiz: { select: { id: true, options: true, correctOption: true } },
+      },
+    });
+    if (!existing) throw new HttpError(404, "Quiz translation not found");
+
+    const baseOptions = existing.quiz.options as unknown as string[];
+    const nextOptions = body.options ?? (existing.options as unknown as string[]);
+    if (nextOptions.length !== baseOptions.length) {
+      throw new HttpError(
+        400,
+        `Translated options must have the same length as the base quiz (${baseOptions.length})`,
+      );
+    }
+
+    const language = body.language?.trim();
+    if (language && language !== existing.language) {
+      const clash = await prisma.quizTranslation.findFirst({
+        where: { quizId: existing.quizId, language },
+        select: { id: true },
+      });
+      if (clash) throw new HttpError(409, "Translation for this language already exists");
+    }
+
+    const translation = await prisma.quizTranslation.update({
+      where: { id: translationId },
+      data: {
+        language: language ?? undefined,
+        question: body.question?.trim() ?? undefined,
+        options: body.options ?? undefined,
+        explanation: body.explanation === undefined ? undefined : body.explanation,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "update_quiz_translation",
+        entityType: "quiz_translation",
+        entityId: translationId,
+        changes: jsonChanges(body),
+      },
+    });
+
+    res.status(200).json({ translation });
+  }),
+);
+
+contentAdminRouter.delete(
+  "/admin/quiz-translations/:translationId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ translationId: z.string().min(1) });
+    const { translationId } = paramsSchema.parse(req.params);
+
+    await prisma.quizTranslation.delete({ where: { id: translationId } });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "delete_quiz_translation",
+        entityType: "quiz_translation",
+        entityId: translationId,
+        changes: {},
+      },
+    });
+
+    res.status(204).send();
+  }),
+);
+
+// ---------- Lesson translations ----------
+contentAdminRouter.get(
+  "/admin/lessons/:lessonId/translations",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ lessonId: z.string().min(1) });
+    const { lessonId } = paramsSchema.parse(req.params);
+
+    const translations = await prisma.lessonTranslation.findMany({
+      where: { lessonId },
+      orderBy: [{ language: "asc" }, { createdAt: "desc" }],
+    });
+
+    res.status(200).json({ translations });
+  }),
+);
+
+contentAdminRouter.post(
+  "/admin/lessons/:lessonId/translations",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ lessonId: z.string().min(1) });
+    const { lessonId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      language: z.string().min(2).max(10),
+      title: z.string().min(1).max(300),
+      description: z.string().max(10000).optional().nullable(),
+      content: z.string().min(1),
+      hook: z.string().max(2000).optional().nullable(),
+      deepDiveContent: z.string().optional().nullable(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      select: { id: true },
+    });
+    if (!lesson) throw new HttpError(404, "Lesson not found");
+
+    const existing = await prisma.lessonTranslation.findFirst({
+      where: {
+        lessonId,
+        language: body.language,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new HttpError(409, "Translation for this language already exists");
+    }
+
+    const translation = await prisma.lessonTranslation.create({
+      data: {
+        lessonId,
+        language: body.language,
+        title: body.title,
+        description: body.description ?? undefined,
+        content: body.content,
+        hook: body.hook ?? undefined,
+        deepDiveContent: body.deepDiveContent ?? undefined,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "create_lesson_translation",
+        entityType: "lesson_translation",
+        entityId: translation.id,
+        changes: jsonChanges({
+          lessonId,
+          language: translation.language,
+        }),
+      },
+    });
+
+    res.status(201).json({ translation });
+  }),
+);
+
+contentAdminRouter.patch(
+  "/admin/translations/:translationId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ translationId: z.string().min(1) });
+    const { translationId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      language: z.string().min(2).max(10).optional(),
+      title: z.string().min(1).max(300).optional(),
+      description: z.string().max(10000).optional().nullable(),
+      content: z.string().min(1).optional(),
+      hook: z.string().max(2000).optional().nullable(),
+      deepDiveContent: z.string().optional().nullable(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const existing = await prisma.lessonTranslation.findUnique({
+      where: { id: translationId },
+      select: { id: true, lessonId: true, language: true },
+    });
+    if (!existing) throw new HttpError(404, "Translation not found");
+
+    const language = body.language?.trim();
+    if (language && language !== existing.language) {
+      const languageClash = await prisma.lessonTranslation.findFirst({
+        where: { lessonId: existing.lessonId, language },
+        select: { id: true },
+      });
+      if (languageClash) {
+        throw new HttpError(409, "Translation for this language already exists");
+      }
+    }
+
+    const translation = await prisma.lessonTranslation.update({
+      where: { id: translationId },
+      data: {
+        language: language ?? undefined,
+        title: body.title ?? undefined,
+        description: body.description === undefined ? undefined : body.description,
+        content: body.content ?? undefined,
+        hook: body.hook === undefined ? undefined : body.hook,
+        deepDiveContent:
+          body.deepDiveContent === undefined ? undefined : body.deepDiveContent,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "update_lesson_translation",
+        entityType: "lesson_translation",
+        entityId: translationId,
+        changes: jsonChanges(body),
+      },
+    });
+
+    res.status(200).json({ translation });
+  }),
+);
+
+contentAdminRouter.delete(
+  "/admin/translations/:translationId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ translationId: z.string().min(1) });
+    const { translationId } = paramsSchema.parse(req.params);
+
+    await prisma.lessonTranslation.delete({ where: { id: translationId } });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "delete_lesson_translation",
+        entityType: "lesson_translation",
+        entityId: translationId,
+        changes: {},
+      },
+    });
+
+    res.status(204).send();
+  }),
+);
+
 // ---------- Characters ----------
 contentAdminRouter.get(
   "/admin/characters",
@@ -826,6 +1167,28 @@ contentAdminRouter.get(
       },
     });
     res.status(200).json({ characters });
+  }),
+);
+
+contentAdminRouter.get(
+  "/admin/characters/:characterId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ characterId: z.string().min(1) });
+    const { characterId } = paramsSchema.parse(req.params);
+
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+      include: {
+        category: { select: { id: true, name: true, slug: true } },
+        unlockLesson: { select: { id: true, title: true, slug: true } },
+        translations: { orderBy: [{ language: "asc" }, { createdAt: "desc" }] },
+      },
+    });
+
+    if (!character) throw new HttpError(404, "Character not found");
+    res.status(200).json({ character });
   }),
 );
 
@@ -957,6 +1320,153 @@ contentAdminRouter.delete(
         action: "delete_character",
         entityType: "character",
         entityId: characterId,
+        changes: {},
+      },
+    });
+
+    res.status(204).send();
+  }),
+);
+
+// ---------- Character translations ----------
+contentAdminRouter.get(
+  "/admin/characters/:characterId/translations",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ characterId: z.string().min(1) });
+    const { characterId } = paramsSchema.parse(req.params);
+
+    const translations = await prisma.characterTranslation.findMany({
+      where: { characterId },
+      orderBy: [{ language: "asc" }, { createdAt: "desc" }],
+    });
+
+    res.status(200).json({ translations });
+  }),
+);
+
+contentAdminRouter.post(
+  "/admin/characters/:characterId/translations",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ characterId: z.string().min(1) });
+    const { characterId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      language: z.string().min(2).max(10),
+      name: z.string().min(1).max(200),
+      description: z.string().min(1).max(10000),
+      story: z.string().max(50000).optional().nullable(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+      select: { id: true },
+    });
+    if (!character) throw new HttpError(404, "Character not found");
+
+    const existing = await prisma.characterTranslation.findFirst({
+      where: { characterId, language: body.language },
+      select: { id: true },
+    });
+    if (existing) throw new HttpError(409, "Translation for this language already exists");
+
+    const translation = await prisma.characterTranslation.create({
+      data: {
+        characterId,
+        language: body.language,
+        name: body.name.trim(),
+        description: body.description,
+        story: body.story ?? undefined,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "create_character_translation",
+        entityType: "character_translation",
+        entityId: translation.id,
+        changes: jsonChanges({ characterId, language: translation.language }),
+      },
+    });
+
+    res.status(201).json({ translation });
+  }),
+);
+
+contentAdminRouter.patch(
+  "/admin/character-translations/:translationId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ translationId: z.string().min(1) });
+    const { translationId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      language: z.string().min(2).max(10).optional(),
+      name: z.string().min(1).max(200).optional(),
+      description: z.string().min(1).max(10000).optional(),
+      story: z.string().max(50000).optional().nullable(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const existing = await prisma.characterTranslation.findUnique({
+      where: { id: translationId },
+      select: { id: true, characterId: true, language: true },
+    });
+    if (!existing) throw new HttpError(404, "Character translation not found");
+
+    const language = body.language?.trim();
+    if (language && language !== existing.language) {
+      const clash = await prisma.characterTranslation.findFirst({
+        where: { characterId: existing.characterId, language },
+        select: { id: true },
+      });
+      if (clash) throw new HttpError(409, "Translation for this language already exists");
+    }
+
+    const translation = await prisma.characterTranslation.update({
+      where: { id: translationId },
+      data: {
+        language: language ?? undefined,
+        name: body.name?.trim() ?? undefined,
+        description: body.description ?? undefined,
+        story: body.story === undefined ? undefined : body.story,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "update_character_translation",
+        entityType: "character_translation",
+        entityId: translationId,
+        changes: jsonChanges(body),
+      },
+    });
+
+    res.status(200).json({ translation });
+  }),
+);
+
+contentAdminRouter.delete(
+  "/admin/character-translations/:translationId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ translationId: z.string().min(1) });
+    const { translationId } = paramsSchema.parse(req.params);
+
+    await prisma.characterTranslation.delete({ where: { id: translationId } });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "delete_character_translation",
+        entityType: "character_translation",
+        entityId: translationId,
         changes: {},
       },
     });

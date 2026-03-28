@@ -1,6 +1,7 @@
 import { OAuth2Client } from "google-auth-library";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import crypto from "crypto";
+import bcrypt from "bcrypt";
 import { User } from "@prisma/client";
 import { env } from "../../config/env";
 import { prisma } from "../../lib/prisma";
@@ -21,13 +22,18 @@ const appleJwks = createRemoteJWKSet(
 const oauthPasswordPlaceholder = "__OAUTH__";
 
 const buildUniqueUsername = async (email: string): Promise<string> => {
-  const base = email.split("@")[0].replace(/[^a-zA-Z0-9_.-]/g, "").toLowerCase();
+  const base = email
+    .split("@")[0]
+    .replace(/[^a-zA-Z0-9_.-]/g, "")
+    .toLowerCase();
   const initial = base.length > 2 ? base : `kamagamer${Date.now()}`;
 
   let attempt = initial;
   let index = 1;
   while (true) {
-    const existing = await prisma.user.findUnique({ where: { username: attempt } });
+    const existing = await prisma.user.findUnique({
+      where: { username: attempt },
+    });
     if (!existing) return attempt;
     attempt = `${initial}${index}`;
     index += 1;
@@ -38,7 +44,9 @@ const upsertSocialUser = async (
   profile: OAuthProfile,
   language?: string,
 ): Promise<User> => {
-  const existing = await prisma.user.findUnique({ where: { email: profile.email } });
+  const existing = await prisma.user.findUnique({
+    where: { email: profile.email },
+  });
 
   if (existing) {
     return prisma.user.update({
@@ -122,4 +130,36 @@ export const loginWithApple = async (idToken: string, language?: string) => {
   const session = await createSession(user.id);
 
   return { user, session };
+};
+
+export const loginWithEmail = async (
+  email: string,
+  password: string,
+  language?: string,
+) => {
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  if (!user) {
+    throw new HttpError(401, "Invalid email or password");
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+  if (!isPasswordValid) {
+    throw new HttpError(401, "Invalid email or password");
+  }
+
+  const session = await createSession(user.id);
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      avatar: user.avatar,
+      language: user.language,
+    },
+    session,
+  };
 };

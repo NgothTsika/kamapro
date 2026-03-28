@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcrypt";
 
 const connectionString = `${process.env.DATABASE_URL ?? ""}`;
 if (!connectionString) {
@@ -14,6 +15,27 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log("🌱 Starting KamaGame seed...");
+
+  // ==================== ADMIN USER ====================
+  const adminEmail = "admin@kamagame.com";
+  const adminPassword = "Admin@123456"; // CHANGE THIS IN PRODUCTION!
+  const adminPasswordHash = await bcrypt.hash(adminPassword, 10);
+
+  const admin = await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: {
+      passwordHash: adminPasswordHash,
+    },
+    create: {
+      email: adminEmail,
+      username: "admin",
+      passwordHash: adminPasswordHash,
+      role: "ADMIN",
+      emailVerified: true,
+    },
+  });
+
+  console.log(`✅ Admin user: ${adminEmail} (Password: ${adminPassword})`);
 
   // ==================== TOP LEVEL CONTENT ====================
   const category = await prisma.category.upsert({
@@ -78,11 +100,10 @@ async function main() {
 
   // ==================== LESSON TRANSLATION ====================
   // There is no separate Language table in your schema; translations store language as a String.
-  const lessonTranslationExisting =
-    await prisma.lessonTranslation.findFirst({
-      where: { lessonId: lesson.id, language: "en" },
-      select: { id: true },
-    });
+  const lessonTranslationExisting = await prisma.lessonTranslation.findFirst({
+    where: { lessonId: lesson.id, language: "en" },
+    select: { id: true },
+  });
 
   if (!lessonTranslationExisting) {
     await prisma.lessonTranslation.create({
@@ -157,7 +178,8 @@ async function main() {
     where: { slug: "kama-the-historian" },
     update: {
       name: "Kama the Historian",
-      description: "A fictional guide that helps players learn African history.",
+      description:
+        "A fictional guide that helps players learn African history.",
       story:
         "Kama collects stories, facts, and legends from across the continent.",
       categoryId: category.id,
@@ -167,7 +189,8 @@ async function main() {
     create: {
       name: "Kama the Historian",
       slug: "kama-the-historian",
-      description: "A fictional guide that helps players learn African history.",
+      description:
+        "A fictional guide that helps players learn African history.",
       story:
         "Kama collects stories, facts, and legends from across the continent.",
       imageUrl: null,
@@ -208,4 +231,3 @@ main()
     await prisma.$disconnect();
     await pool.end();
   });
-

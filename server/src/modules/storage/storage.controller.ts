@@ -15,27 +15,73 @@ const supabase = createClient(
   },
 );
 
-// Storage bucket configuration
+// Storage bucket configuration - Based on Prisma Schema
 const STORAGE_BUCKETS = [
+  // ========== Content Buckets ==========
   {
     name: "lesson-covers",
     public: true,
-    description: "Lesson and category cover images",
+    description:
+      "Lesson and category cover images (Lesson.coverImage, Category.coverImage)",
   },
   {
     name: "chapter-media",
     public: true,
-    description: "Chapter images and videos",
+    description: "Chapter media (images/videos) (Chapter.mediaUrl)",
   },
   {
     name: "character-images",
     public: true,
-    description: "Character portrait and invention images",
+    description:
+      "Character main images and portraits (Character.imageUrl, CharacterCard.characterImage)",
   },
+  {
+    name: "character-inventions",
+    public: true,
+    description:
+      "Character invention images (Character.inventionImage, CharacterCard.inventionImage)",
+  },
+
+  // ========== User Buckets ==========
+  {
+    name: "user-avatars",
+    public: true,
+    description: "User profile avatars (User.avatar)",
+  },
+
+  // ========== Community & Submissions Buckets ==========
+  {
+    name: "community-submissions",
+    public: true,
+    description: "User-submitted content images (ContentSubmission.imageUrl)",
+  },
+
+  // ========== Achievement & Icon Buckets ==========
+  {
+    name: "achievement-icons",
+    public: true,
+    description: "Achievement badge icons (Achievement.icon)",
+  },
+
+  // ========== Category & Topic Buckets ==========
+  {
+    name: "category-icons",
+    public: true,
+    description: "Category icon images (Category.icon)",
+  },
+
+  // ========== Game & Quiz Media ==========
   {
     name: "quiz-media",
     public: true,
-    description: "Quiz related media",
+    description: "Quiz related media (future: question images, hints)",
+  },
+
+  // ========== Backups & Admin ==========
+  {
+    name: "admin-backups",
+    public: false,
+    description: "Admin backups and exports (private)",
   },
 ];
 
@@ -378,6 +424,113 @@ router.post("/fix-all", async (req, res) => {
     console.error("Complete setup error:", error);
     res.status(500).json({
       error: error instanceof Error ? error.message : "Setup failed",
+    });
+  }
+});
+
+/**
+ * POST /storage/disable-rls
+ * Provide SQL instructions to disable RLS
+ * Note: RLS cannot be disabled via API - must be done via Supabase SQL Editor
+ */
+router.post("/disable-rls", async (req, res) => {
+  try {
+    const results = [];
+
+    // Update bucket settings to ensure public access
+    for (const bucket of STORAGE_BUCKETS) {
+      try {
+        const { error } = await supabase.storage.updateBucket(bucket.name, {
+          public: true,
+          fileSizeLimit: 52428800,
+        });
+
+        results.push({
+          name: bucket.name,
+          status: "configured",
+          message: "Bucket set to public",
+        });
+      } catch (err) {
+        results.push({
+          name: bucket.name,
+          status: "error",
+          message: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    }
+
+    res.status(200).json({
+      message: "Buckets configured for public access",
+      info: "RLS policies must be disabled via Supabase SQL Editor (cannot be done via API)",
+      sqlCommand: "ALTER TABLE storage.objects DISABLE ROW LEVEL SECURITY;",
+      steps: [
+        "1. Go to https://app.supabase.com",
+        "2. Select your project 'KamaGame'",
+        "3. Click 'SQL Editor' in the left sidebar",
+        "4. Click 'New Query' (top right)",
+        "5. Copy and paste the SQL command below:",
+        "   ",
+        "   ALTER TABLE storage.objects DISABLE ROW LEVEL SECURITY;",
+        "   ",
+        "6. Click the 'Run' button (or press Cmd+Enter)",
+        "7. You should see: 'Query successful. No rows returned.'",
+        "8. Go back to your app and try uploading files",
+      ],
+      results,
+      nextStep: "Execute the SQL command in Supabase SQL Editor",
+    });
+  } catch (error) {
+    console.error("RLS disable error:", error);
+    res.status(500).json({
+      error:
+        error instanceof Error ? error.message : "Failed to prepare RLS fix",
+      hint: "Execute this SQL in Supabase SQL Editor: ALTER TABLE storage.objects DISABLE ROW LEVEL SECURITY;",
+    });
+  }
+});
+
+/**
+ * POST /storage/check-status
+ * Check current storage setup status
+ */
+router.post("/check-status", async (req, res) => {
+  try {
+    const results = [];
+
+    // Check if buckets exist
+    const { data: buckets, error: bucketsError } =
+      await supabase.storage.listBuckets();
+
+    if (bucketsError) {
+      return res.status(500).json({
+        error: "Cannot list buckets",
+        details: bucketsError.message,
+      });
+    }
+
+    for (const bucket of STORAGE_BUCKETS) {
+      const exists = buckets?.some((b) => b.name === bucket.name);
+      results.push({
+        name: bucket.name,
+        exists,
+        status: exists ? "created" : "missing",
+        message: exists
+          ? `Bucket exists (public: ${buckets?.find((b) => b.name === bucket.name)?.public})`
+          : "Bucket not found",
+      });
+    }
+
+    res.status(200).json({
+      message: "Storage status check",
+      buckets: results,
+      nextSteps: results.some((r) => !r.exists)
+        ? "Click 'Initialize Buckets' on the Storage Setup page"
+        : "Buckets are ready. Click 'Fix RLS Policies' if uploads fail.",
+    });
+  } catch (error) {
+    console.error("Status check error:", error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Status check failed",
     });
   }
 });

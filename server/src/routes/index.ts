@@ -15,6 +15,7 @@ import { collectionsRouter } from "../modules/collections/collections.controller
 import { pushRouter } from "../modules/push/push.controller";
 import { achievementsRouter } from "../modules/achievements/achievements.controller";
 import { usersRouter } from "../modules/users/users.controller";
+import storageRouter from "../modules/storage/storage.controller";
 
 export const apiRouter = Router();
 
@@ -34,3 +35,4 @@ apiRouter.use("/collections", collectionsRouter);
 apiRouter.use("/push", pushRouter);
 apiRouter.use("/achievements", achievementsRouter);
 apiRouter.use("/users", usersRouter);
+apiRouter.use("/storage", storageRouter);

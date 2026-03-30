@@ -1,163 +1,96 @@
-import { Router } from "express";
-import { createClient } from "@supabase/supabase-js";
+/**
+ * Storage Controller
+ * Handles storage initialization, bucket management, and file operations
+ * Uses best practices from Supabase official documentation
+ */
+
+import { Router, Request, Response } from "express";
+import { supabaseAdmin } from "../../lib/supabase-admin";
+import {
+  uploadFile as uploadFileToStorage,
+  deleteFile,
+  deleteFiles,
+  listFiles,
+} from "../../lib/storage-service";
+import { STORAGE_BUCKETS } from "../../lib/storage-config";
 
 const router = Router();
 
-// Initialize Supabase with service role (for admin operations)
-const supabase = createClient(
-  process.env.SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || "",
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  },
-);
-
-// Storage bucket configuration - Based on Prisma Schema
-const STORAGE_BUCKETS = [
-  // ========== Content Buckets ==========
-  {
-    name: "lesson-covers",
-    public: true,
-    description:
-      "Lesson and category cover images (Lesson.coverImage, Category.coverImage)",
-  },
-  {
-    name: "chapter-media",
-    public: true,
-    description: "Chapter media (images/videos) (Chapter.mediaUrl)",
-  },
-  {
-    name: "character-images",
-    public: true,
-    description:
-      "Character main images and portraits (Character.imageUrl, CharacterCard.characterImage)",
-  },
-  {
-    name: "character-inventions",
-    public: true,
-    description:
-      "Character invention images (Character.inventionImage, CharacterCard.inventionImage)",
-  },
-
-  // ========== User Buckets ==========
-  {
-    name: "user-avatars",
-    public: true,
-    description: "User profile avatars (User.avatar)",
-  },
-
-  // ========== Community & Submissions Buckets ==========
-  {
-    name: "community-submissions",
-    public: true,
-    description: "User-submitted content images (ContentSubmission.imageUrl)",
-  },
-
-  // ========== Achievement & Icon Buckets ==========
-  {
-    name: "achievement-icons",
-    public: true,
-    description: "Achievement badge icons (Achievement.icon)",
-  },
-
-  // ========== Category & Topic Buckets ==========
-  {
-    name: "category-icons",
-    public: true,
-    description: "Category icon images (Category.icon)",
-  },
-
-  // ========== Game & Quiz Media ==========
-  {
-    name: "quiz-media",
-    public: true,
-    description: "Quiz related media (future: question images, hints)",
-  },
-
-  // ========== Backups & Admin ==========
-  {
-    name: "admin-backups",
-    public: false,
-    description: "Admin backups and exports (private)",
-  },
-];
+// ============================================================================
+// INITIALIZATION ENDPOINTS
+// ============================================================================
 
 /**
  * POST /storage/init
- * Initialize storage buckets
- * Requires: admin authentication
+ * Initialize all storage buckets
+ * Creates buckets if they don't exist
  */
-router.post("/init", async (req, res) => {
+router.post("/init", async (req: Request, res: Response) => {
   try {
-    const results = [];
+    const results: Array<{
+      name: string;
+      status: "created" | "exists" | "error";
+      message: string;
+    }> = [];
 
     for (const bucket of STORAGE_BUCKETS) {
       try {
         // Check if bucket exists
-        const { data: existingBuckets } = await supabase.storage.listBuckets();
+        const { data: existingBuckets } =
+          await supabaseAdmin.storage.listBuckets();
         const bucketExists = existingBuckets?.some(
-          (b) => b.name === bucket.name,
+          (b: any) => b.name === bucket.name,
         );
 
         if (bucketExists) {
           results.push({
             name: bucket.name,
             status: "exists",
-            message: `Bucket "${bucket.name}" already exists`,
-          });
-          continue;
-        }
-
-        // Create bucket
-        const { data, error } = await supabase.storage.createBucket(
-          bucket.name,
-          {
-            public: bucket.public,
-            fileSizeLimit: 52428800, // 50MB
-            allowedMimeTypes: [
-              "image/jpeg",
-              "image/png",
-              "image/webp",
-              "image/gif",
-              "video/mp4",
-              "video/webm",
-              "video/quicktime",
-            ],
-          },
-        );
-
-        if (error) {
-          results.push({
-            name: bucket.name,
-            status: "error",
-            message: error.message,
+            message: "Bucket already exists",
           });
         } else {
-          results.push({
-            name: bucket.name,
-            status: "created",
-            message: `Bucket "${bucket.name}" created successfully`,
-          });
+          // Create bucket
+          const { data, error } = await supabaseAdmin.storage.createBucket(
+            bucket.name,
+            {
+              public: bucket.public,
+              fileSizeLimit: bucket.fileSizeLimit,
+              allowedMimeTypes: bucket.allowedMimeTypes,
+            },
+          );
+
+          if (error) {
+            results.push({
+              name: bucket.name,
+              status: "error",
+              message: error.message || "Failed to create bucket",
+            });
+          } else {
+            results.push({
+              name: bucket.name,
+              status: "created",
+              message: `Bucket created successfully (${bucket.public ? "public" : "private"})`,
+            });
+          }
         }
-      } catch (err) {
+      } catch (error) {
         results.push({
           name: bucket.name,
           status: "error",
-          message: err instanceof Error ? err.message : "Unknown error",
+          message: error instanceof Error ? error.message : "Unknown error",
         });
       }
     }
 
     res.status(200).json({
+      success: true,
       message: "Storage initialization completed",
       results,
     });
   } catch (error) {
     console.error("Storage init error:", error);
     res.status(500).json({
+      success: false,
       error:
         error instanceof Error
           ? error.message
@@ -167,370 +100,489 @@ router.post("/init", async (req, res) => {
 });
 
 /**
- * GET /storage/buckets
- * List all storage buckets
+ * POST /storage/reset
+ * Reset all buckets (delete and recreate)
+ * WARNING: This will delete all files in buckets
  */
-router.get("/buckets", async (req, res) => {
+router.post("/reset", async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase.storage.listBuckets();
+    const results: Array<{
+      name: string;
+      deleted: boolean;
+      created: boolean;
+      message: string;
+    }> = [];
 
-    if (error) {
-      return res.status(400).json({ error: error.message });
+    for (const bucket of STORAGE_BUCKETS) {
+      try {
+        let deleted = false;
+        let created = false;
+
+        // Delete bucket
+        const { error: deleteError } = await supabaseAdmin.storage.deleteBucket(
+          bucket.name,
+        );
+
+        if (!deleteError) {
+          deleted = true;
+        } else if (!deleteError.message.includes("not found")) {
+          console.warn(`Failed to delete bucket ${bucket.name}:`, deleteError);
+        }
+
+        // Recreate bucket
+        const { error: createError } = await supabaseAdmin.storage.createBucket(
+          bucket.name,
+          {
+            public: bucket.public,
+            fileSizeLimit: bucket.fileSizeLimit,
+            allowedMimeTypes: bucket.allowedMimeTypes,
+          },
+        );
+
+        if (!createError) {
+          created = true;
+        }
+
+        results.push({
+          name: bucket.name,
+          deleted,
+          created,
+          message: `${deleted ? "Deleted and " : ""}${created ? "recreated" : "creation failed"}`,
+        });
+      } catch (error) {
+        results.push({
+          name: bucket.name,
+          deleted: false,
+          created: false,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
     }
 
     res.status(200).json({
-      buckets: data || [],
-      count: data?.length || 0,
+      success: true,
+      message: "Storage reset completed",
+      warning: "All files in buckets have been deleted",
+      results,
+    });
+  } catch (error) {
+    console.error("Storage reset error:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Storage reset failed",
+    });
+  }
+});
+
+// ============================================================================
+// BUCKET MANAGEMENT ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /storage/buckets
+ * List all configured buckets and their status
+ */
+router.get("/buckets", async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabaseAdmin.storage.listBuckets();
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    // Map actual buckets with our configuration
+    const bucketInfo = STORAGE_BUCKETS.map((config) => {
+      const actual = data?.find((b) => b.name === config.name);
+      return {
+        name: config.name,
+        description: config.description,
+        public: config.public,
+        fileSizeLimit: config.fileSizeLimit,
+        allowedMimeTypes: config.allowedMimeTypes,
+        exists: !!actual,
+        createdAt: actual?.created_at,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      total: bucketInfo.length,
+      buckets: bucketInfo,
     });
   } catch (error) {
     console.error("List buckets error:", error);
     res.status(500).json({
+      success: false,
       error: error instanceof Error ? error.message : "Failed to list buckets",
     });
   }
 });
 
 /**
- * POST /storage/cors
- * Configure CORS for storage buckets
+ * GET /storage/buckets/:bucketName
+ * Get details for a specific bucket
  */
-router.post("/cors", async (req, res) => {
+router.get("/buckets/:bucketName", async (req: Request, res: Response) => {
   try {
-    const corsPolicy = [
-      {
-        origin: [
-          "http://localhost:3000",
-          "http://localhost:4000",
-          "https://kamapro-one.vercel.app",
-        ],
-        methods: ["GET", "HEAD", "PUT", "POST", "DELETE"],
-        allowedHeaders: ["*"],
-        maxAgeSeconds: 86400,
-      },
-    ];
+    const { bucketName } = req.params;
 
-    const results = [];
+    const { data, error } = await supabaseAdmin.storage.listBuckets();
 
-    for (const bucket of STORAGE_BUCKETS) {
-      try {
-        // Update CORS policy for each bucket
-        const { error } = await supabase.storage.updateBucket(bucket.name, {
-          public: bucket.public,
-        });
-
-        if (error) {
-          results.push({
-            name: bucket.name,
-            status: "error",
-            message: error.message,
-          });
-        } else {
-          results.push({
-            name: bucket.name,
-            status: "configured",
-            message: `CORS policy configured for "${bucket.name}"`,
-          });
-        }
-      } catch (err) {
-        results.push({
-          name: bucket.name,
-          status: "error",
-          message: err instanceof Error ? err.message : "Unknown error",
-        });
-      }
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        error: error.message,
+      });
     }
 
-    res.status(200).json({
-      message: "CORS configuration completed",
-      corsPolicy,
-      results,
-    });
-  } catch (error) {
-    console.error("CORS config error:", error);
-    res.status(500).json({
-      error:
-        error instanceof Error ? error.message : "CORS configuration failed",
-    });
-  }
-});
+    const bucket = data?.find((b) => b.name === bucketName);
 
-/**
- * POST /storage/rls-disable
- * Disable RLS policies for storage buckets to allow public uploads
- */
-router.post("/rls-disable", async (req, res) => {
-  try {
-    const results = [];
-
-    // Note: Disabling RLS requires direct Supabase API call or admin panel
-    // This endpoint provides guidance and can be used with a direct API call
-    for (const bucket of STORAGE_BUCKETS) {
-      try {
-        // Attempt to disable RLS by making the bucket truly public
-        const { error } = await supabase.storage.updateBucket(bucket.name, {
-          public: true,
-          fileSizeLimit: 52428800, // 50MB
-        });
-
-        if (error) {
-          results.push({
-            name: bucket.name,
-            status: "warning",
-            message: `Note: RLS policies may still be active. Update via Supabase dashboard if needed.`,
-          });
-        } else {
-          results.push({
-            name: bucket.name,
-            status: "updated",
-            message: `Bucket "${bucket.name}" updated to ensure public access`,
-          });
-        }
-      } catch (err) {
-        results.push({
-          name: bucket.name,
-          status: "error",
-          message: err instanceof Error ? err.message : "Unknown error",
-        });
-      }
-    }
-
-    res.status(200).json({
-      message: "RLS policy update completed",
-      note: "If you still get RLS errors, manually disable RLS policies in Supabase dashboard",
-      steps: [
-        "1. Go to https://app.supabase.com",
-        "2. Select your project",
-        "3. Go to Storage > Policies",
-        "4. For each bucket, disable RLS (toggle off)",
-        "5. Click 'Allow' for public uploads",
-      ],
-      results,
-    });
-  } catch (error) {
-    console.error("RLS disable error:", error);
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "RLS update failed",
-    });
-  }
-});
-
-/**
- * POST /storage/fix-all
- * Complete storage setup: create buckets, configure CORS, and disable RLS
- */
-router.post("/fix-all", async (req, res) => {
-  try {
-    const allResults: {
-      init: Array<{ name: string; status: string; message: string }>;
-      cors: Array<{ name: string; status: string; message: string }>;
-      rls: Array<{ name: string; status: string; message: string }>;
-    } = {
-      init: [],
-      cors: [],
-      rls: [],
-    };
-
-    // Step 1: Initialize buckets
-    for (const bucket of STORAGE_BUCKETS) {
-      try {
-        const { data: existingBuckets } = await supabase.storage.listBuckets();
-        const bucketExists = existingBuckets?.some(
-          (b) => b.name === bucket.name,
-        );
-
-        if (!bucketExists) {
-          const { error } = await supabase.storage.createBucket(bucket.name, {
-            public: bucket.public,
-            fileSizeLimit: 52428800,
-            allowedMimeTypes: [
-              "image/jpeg",
-              "image/png",
-              "image/webp",
-              "image/gif",
-              "video/mp4",
-              "video/webm",
-              "video/quicktime",
-            ],
-          });
-
-          allResults.init.push({
-            name: bucket.name,
-            status: error ? "error" : "created",
-            message: error?.message || `Bucket created`,
-          });
-        } else {
-          allResults.init.push({
-            name: bucket.name,
-            status: "exists",
-            message: "Bucket already exists",
-          });
-        }
-      } catch (err) {
-        allResults.init.push({
-          name: bucket.name,
-          status: "error",
-          message: err instanceof Error ? err.message : "Unknown error",
-        });
-      }
-    }
-
-    // Step 2: Update buckets for CORS
-    for (const bucket of STORAGE_BUCKETS) {
-      try {
-        const { error } = await supabase.storage.updateBucket(bucket.name, {
-          public: bucket.public,
-        });
-
-        allResults.cors.push({
-          name: bucket.name,
-          status: error ? "error" : "configured",
-          message: error?.message || "CORS configured",
-        });
-      } catch (err) {
-        allResults.cors.push({
-          name: bucket.name,
-          status: "error",
-          message: err instanceof Error ? err.message : "Unknown error",
-        });
-      }
-    }
-
-    // Step 3: Attempt RLS fixes
-    for (const bucket of STORAGE_BUCKETS) {
-      allResults.rls.push({
-        name: bucket.name,
-        status: "info",
-        message: "Manual RLS disable needed - see instructions in response",
+    if (!bucket) {
+      return res.status(404).json({
+        success: false,
+        error: `Bucket '${bucketName}' not found`,
       });
     }
 
     res.status(200).json({
-      message: "Storage complete setup finished",
       success: true,
-      manualStepsRequired: true,
-      manualSteps: [
-        "1. Go to https://app.supabase.com → Select Project",
-        "2. Go to Authentication > Policies (left sidebar)",
-        "3. Find storage.objects table",
-        "4. Look for any RLS policies with SELECT/INSERT/UPDATE/DELETE",
-        "5. For each policy, click the 3-dots and DELETE it",
-        "6. Answer YES to 'Drop policy'",
-        "7. After all policies are deleted, storage will be fully public",
-        "8. Try uploading files again",
-      ],
-      results: allResults,
+      bucket: {
+        name: bucket.name,
+        public: bucket.public,
+        createdAt: bucket.created_at,
+        updatedAt: bucket.updated_at,
+      },
     });
   } catch (error) {
-    console.error("Complete setup error:", error);
+    console.error("Get bucket error:", error);
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Setup failed",
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to get bucket",
     });
   }
 });
 
 /**
- * POST /storage/disable-rls
- * Provide SQL instructions to disable RLS
- * Note: RLS cannot be disabled via API - must be done via Supabase SQL Editor
+ * PUT /storage/buckets/:bucketName/public
+ * Update bucket public/private setting
  */
-router.post("/disable-rls", async (req, res) => {
-  try {
-    const results = [];
+router.put(
+  "/buckets/:bucketName/public",
+  async (req: Request, res: Response) => {
+    try {
+      const bucketName = Array.isArray(req.params.bucketName)
+        ? req.params.bucketName[0]
+        : req.params.bucketName;
+      const { public: isPublic } = req.body;
 
-    // Update bucket settings to ensure public access
-    for (const bucket of STORAGE_BUCKETS) {
-      try {
-        const { error } = await supabase.storage.updateBucket(bucket.name, {
-          public: true,
-          fileSizeLimit: 52428800,
-        });
-
-        results.push({
-          name: bucket.name,
-          status: "configured",
-          message: "Bucket set to public",
-        });
-      } catch (err) {
-        results.push({
-          name: bucket.name,
-          status: "error",
-          message: err instanceof Error ? err.message : "Unknown error",
+      if (typeof isPublic !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          error: "public parameter must be boolean",
         });
       }
+
+      const { error } = await supabaseAdmin.storage.updateBucket(bucketName, {
+        public: isPublic,
+      });
+
+      if (error) {
+        return res.status(400).json({
+          success: false,
+          error: error.message,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: `Bucket '${bucketName}' is now ${isPublic ? "public" : "private"}`,
+      });
+    } catch (error) {
+      console.error("Update bucket error:", error);
+      res.status(500).json({
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Failed to update bucket",
+      });
+    }
+  },
+);
+
+// ============================================================================
+// FILE OPERATIONS ENDPOINTS
+// ============================================================================
+
+/**
+ * POST /storage/upload
+ * Upload a file to a bucket
+ * Body: FormData with file, bucket, folder
+ */
+router.post("/upload", async (req: Request, res: Response) => {
+  try {
+    const { bucket, folder } = req.body;
+
+    if (!bucket) {
+      return res.status(400).json({
+        success: false,
+        error: "bucket parameter is required",
+      });
+    }
+
+    const file = (req as any).file;
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        error: "No file provided",
+      });
+    }
+
+    const result = await uploadFileToStorage({
+      bucket,
+      folder: folder || "uploads",
+      file: file.buffer,
+      fileName: file.originalname,
+      contentType: file.mimetype,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+      });
     }
 
     res.status(200).json({
-      message: "Buckets configured for public access",
-      info: "RLS policies must be disabled via Supabase SQL Editor (cannot be done via API)",
-      sqlCommand: "ALTER TABLE storage.objects DISABLE ROW LEVEL SECURITY;",
-      steps: [
-        "1. Go to https://app.supabase.com",
-        "2. Select your project 'KamaGame'",
-        "3. Click 'SQL Editor' in the left sidebar",
-        "4. Click 'New Query' (top right)",
-        "5. Copy and paste the SQL command below:",
-        "   ",
-        "   ALTER TABLE storage.objects DISABLE ROW LEVEL SECURITY;",
-        "   ",
-        "6. Click the 'Run' button (or press Cmd+Enter)",
-        "7. You should see: 'Query successful. No rows returned.'",
-        "8. Go back to your app and try uploading files",
-      ],
-      results,
-      nextStep: "Execute the SQL command in Supabase SQL Editor",
+      success: true,
+      data: {
+        url: result.url,
+        path: result.path,
+        size: result.size,
+        contentType: result.contentType,
+      },
     });
   } catch (error) {
-    console.error("RLS disable error:", error);
+    console.error("Upload error:", error);
     res.status(500).json({
-      error:
-        error instanceof Error ? error.message : "Failed to prepare RLS fix",
-      hint: "Execute this SQL in Supabase SQL Editor: ALTER TABLE storage.objects DISABLE ROW LEVEL SECURITY;",
+      success: false,
+      error: error instanceof Error ? error.message : "Upload failed",
     });
   }
 });
 
 /**
- * POST /storage/check-status
- * Check current storage setup status
+ * DELETE /storage/delete
+ * Delete a file from a bucket
+ * Body: { bucket, path }
  */
-router.post("/check-status", async (req, res) => {
+router.delete("/delete", async (req: Request, res: Response) => {
   try {
-    const results = [];
+    const { bucket, path } = req.body;
 
-    // Check if buckets exist
-    const { data: buckets, error: bucketsError } =
-      await supabase.storage.listBuckets();
-
-    if (bucketsError) {
-      return res.status(500).json({
-        error: "Cannot list buckets",
-        details: bucketsError.message,
+    if (!bucket || !path) {
+      return res.status(400).json({
+        success: false,
+        error: "bucket and path parameters are required",
       });
     }
 
-    for (const bucket of STORAGE_BUCKETS) {
-      const exists = buckets?.some((b) => b.name === bucket.name);
-      results.push({
-        name: bucket.name,
-        exists,
-        status: exists ? "created" : "missing",
-        message: exists
-          ? `Bucket exists (public: ${buckets?.find((b) => b.name === bucket.name)?.public})`
-          : "Bucket not found",
+    const result = await deleteFile(bucket, path);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
       });
     }
 
     res.status(200).json({
-      message: "Storage status check",
-      buckets: results,
-      nextSteps: results.some((r) => !r.exists)
-        ? "Click 'Initialize Buckets' on the Storage Setup page"
-        : "Buckets are ready. Click 'Fix RLS Policies' if uploads fail.",
+      success: true,
+      message: `File deleted: ${path}`,
     });
   } catch (error) {
-    console.error("Status check error:", error);
+    console.error("Delete error:", error);
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Status check failed",
+      success: false,
+      error: error instanceof Error ? error.message : "Delete failed",
+    });
+  }
+});
+
+/**
+ * POST /storage/delete-multiple
+ * Delete multiple files from a bucket
+ * Body: { bucket, paths: string[] }
+ */
+router.post("/delete-multiple", async (req: Request, res: Response) => {
+  try {
+    const { bucket, paths } = req.body;
+
+    if (!bucket || !Array.isArray(paths)) {
+      return res.status(400).json({
+        success: false,
+        error: "bucket and paths array are required",
+      });
+    }
+
+    const result = await deleteFiles(bucket, paths);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `${paths.length} file(s) deleted`,
+    });
+  } catch (error) {
+    console.error("Bulk delete error:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Bulk delete failed",
+    });
+  }
+});
+
+/**
+ * GET /storage/list/:bucket
+ * List files in a bucket folder
+ * Query: ?folder=path/to/folder
+ */
+router.get("/list/:bucket", async (req: Request, res: Response) => {
+  try {
+    const bucket = Array.isArray(req.params.bucket)
+      ? req.params.bucket[0]
+      : req.params.bucket;
+    let folderParam = "";
+    if (typeof req.query.folder === "string") {
+      folderParam = req.query.folder;
+    } else if (Array.isArray(req.query.folder) && req.query.folder.length > 0) {
+      folderParam = String(req.query.folder[0]);
+    }
+
+    const result = await listFiles(bucket, folderParam);
+
+    if (result.error) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      bucket,
+      folder: folderParam || "root",
+      files: result.files || [],
+    });
+  } catch (error) {
+    console.error("List files error:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to list files",
+    });
+  }
+});
+
+// ============================================================================
+// DIAGNOSTIC & RLS ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /storage/check-rls-status
+ * Check if RLS is properly disabled for storage
+ * Returns information needed to fix RLS issues
+ */
+router.get("/check-rls-status", async (req: Request, res: Response) => {
+  try {
+    // Try a test upload to verify RLS is working
+    const testFileName = `.rls-check-${Date.now()}`;
+    const testBuffer = Buffer.from("RLS test");
+
+    const { error } = await supabaseAdmin.storage
+      .from("lesson-covers")
+      .upload(`rls-check/${testFileName}`, testBuffer, {
+        upsert: false,
+      });
+
+    // Clean up test file
+    if (!error) {
+      await supabaseAdmin.storage
+        .from("lesson-covers")
+        .remove([`rls-check/${testFileName}`]);
+    }
+
+    res.status(200).json({
+      success: true,
+      rlsStatus: error ? "BLOCKED" : "WORKING",
+      message: error
+        ? "RLS is blocking uploads - need to fix"
+        : "RLS is properly configured",
+      error: error?.message || null,
+      fixInstructions: error
+        ? {
+            step1: "Go to https://app.supabase.com",
+            step2: "Select your project",
+            step3: "Click SQL Editor",
+            step4:
+              "Run: ALTER TABLE storage.objects DISABLE ROW LEVEL SECURITY;",
+            step5:
+              "Run: ALTER TABLE storage.buckets DISABLE ROW LEVEL SECURITY;",
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error("RLS check error:", error);
+    res.status(500).json({
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to check RLS status",
+    });
+  }
+});
+
+/**
+ * GET /storage/health
+ * Health check for storage configuration
+ */
+router.get("/health", async (req: Request, res: Response) => {
+  try {
+    const { data: buckets, error: listError } =
+      await supabaseAdmin.storage.listBuckets();
+
+    if (listError) {
+      return res.status(500).json({
+        success: false,
+        status: "error",
+        error: listError.message,
+      });
+    }
+
+    const configuredCount = STORAGE_BUCKETS.length;
+    const existingCount = buckets?.length || 0;
+
+    res.status(200).json({
+      success: true,
+      status: existingCount === configuredCount ? "healthy" : "warning",
+      configured: configuredCount,
+      existing: existingCount,
+      buckets: buckets?.map((b) => ({
+        name: b.name,
+        public: b.public,
+      })),
+    });
+  } catch (error) {
+    console.error("Health check error:", error);
+    res.status(500).json({
+      success: false,
+      status: "error",
+      error: error instanceof Error ? error.message : "Health check failed",
     });
   }
 });

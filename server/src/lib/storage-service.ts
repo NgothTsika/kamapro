@@ -77,8 +77,13 @@ export async function uploadFile(
     }
 
     // Validate file for bucket
+    // Convert Buffer to Uint8Array for File constructor compatibility
+    const fileBuffer = Buffer.isBuffer(fileData)
+      ? new Uint8Array(fileData)
+      : fileData;
+
     const validation = validateFileForBucket(
-      new File([fileData], fileName || "file", { type: mimeType }),
+      new File([fileBuffer], fileName || "file", { type: mimeType }),
       bucket,
     );
 

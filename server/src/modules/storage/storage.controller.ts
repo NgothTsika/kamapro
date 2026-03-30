@@ -13,6 +13,7 @@ import {
   listFiles,
 } from "../../lib/storage-service";
 import { STORAGE_BUCKETS } from "../../lib/storage-config";
+import { singleFileUpload } from "../../middleware/storage.middleware";
 
 const router = Router();
 
@@ -320,7 +321,7 @@ router.put(
  * Upload a file to a bucket
  * Body: FormData with file, bucket, folder
  */
-router.post("/upload", async (req: Request, res: Response) => {
+router.post("/upload", singleFileUpload, async (req: Request, res: Response) => {
   try {
     const { bucket, folder } = req.body;
 

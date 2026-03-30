@@ -321,58 +321,62 @@ router.put(
  * Upload a file to a bucket
  * Body: FormData with file, bucket, folder
  */
-router.post("/upload", singleFileUpload, async (req: Request, res: Response) => {
-  try {
-    const { bucket, folder } = req.body;
+router.post(
+  "/upload",
+  singleFileUpload,
+  async (req: Request, res: Response) => {
+    try {
+      const { bucket, folder } = req.body;
 
-    if (!bucket) {
-      return res.status(400).json({
+      if (!bucket) {
+        return res.status(400).json({
+          success: false,
+          error: "bucket parameter is required",
+        });
+      }
+
+      const file = (req as any).file;
+
+      if (!file) {
+        return res.status(400).json({
+          success: false,
+          error: "No file provided",
+        });
+      }
+
+      const result = await uploadFileToStorage({
+        bucket,
+        folder: folder || "uploads",
+        file: file.buffer,
+        fileName: file.originalname,
+        contentType: file.mimetype,
+      });
+
+      if (!result.success) {
+        return res.status(400).json({
+          success: false,
+          error: result.error,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          url: result.url,
+          path: result.path,
+          size: result.size,
+          contentType: result.contentType,
+        },
+      });
+    } catch (error) {
+      console.error("Upload error:", error);
+      res.status(500).json({
         success: false,
-        error: "bucket parameter is required",
+        error: error instanceof Error ? error.message : "Upload failed",
       });
     }
-
-    const file = (req as any).file;
-
-    if (!file) {
-      return res.status(400).json({
-        success: false,
-        error: "No file provided",
-      });
-    }
-
-    const result = await uploadFileToStorage({
-      bucket,
-      folder: folder || "uploads",
-      file: file.buffer,
-      fileName: file.originalname,
-      contentType: file.mimetype,
-    });
-
-    if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        error: result.error,
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        url: result.url,
-        path: result.path,
-        size: result.size,
-        contentType: result.contentType,
-      },
-    });
-  } catch (error) {
-    console.error("Upload error:", error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : "Upload failed",
-    });
-  }
-});
+  },
+);
 
 /**
  * DELETE /storage/delete

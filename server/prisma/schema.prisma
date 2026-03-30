@@ -182,13 +182,15 @@ model Quiz {
   lessonId         String
   lesson           Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   question         String
-  options          Json // array of strings
-  correctOption    Int
+  type             String   @default("multiple_choice") // "true_false", "multiple_choice", "image_choice"
+  options          Json     // array of strings for text options
+  optionImages     Json?    // array of image URLs for image_choice type
+  correctOption    Int      // index of correct answer
   explanation      String?
   order            Int      @default(0)
   heartLimit       Int      @default(4)
   timeLimitSeconds Int?
-  difficulty       String? // "easy", "medium", "hard"
+  difficulty       String?  // "easy", "medium", "hard"
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -249,12 +251,35 @@ model Character {
   slug           String   @unique
   description    String
   imageUrl       String?
-  inventionImage String?
   story          String?
   xpThreshold    Int?
   rarityLevel    String? // "common", "rare", "legendary"
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  // Hierarchical type system
+  // Level 1: Entity Type (main category)
+  entityType     String   @default("person") // "person" | "place" | "event" | "tradition" | "concept"
+  
+  // Level 2: Specific Type (varies by entity type)
+  personType     String?   // "inventor" | "doctor" | "singer" | "artist" | "scientist" | "philosopher" | "athlete" | "activist" | "leader" | custom
+  placeType      String?   // "city" | "country" | "region" | "monument" | "institution" | custom
+  eventType      String?   // "war" | "revolution" | "discovery" | "cultural_event" | "natural_disaster" | custom
+  traditionType  String?   // "holiday" | "ritual" | "art_form" | "belief_system" | "festival" | custom
+  conceptType    String?   // "movement" | "philosophy" | "technology" | "culture" | custom
+  
+  // Type-specific fields (flexible metadata)
+  metadata       Json?    // Stores type-specific data like:
+                          // { personType: {...}, placeType: {...}, etc. }
+  
+  // Common temporal fields
+  birthYear      Int?     // Birth year (for people, events, traditions)
+  endYear        Int?     // End/death year (for events, traditions, concepts)
+  country        String?  // Associated country/location
+  achievements   Json?    // Array of achievement strings
+  
+  // Legacy fields (kept for backwards compatibility)
+  inventionImage String?
 
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -264,6 +289,15 @@ model Character {
 
   translations CharacterTranslation[]
   collectedBy  CollectedCharacter[]
+  
+  @@index([entityType])
+  @@index([personType])
+  @@index([placeType])
+  @@index([eventType])
+  @@index([traditionType])
+  @@index([conceptType])
+  @@index([categoryId])
+  @@index([country])
 }
 
 model CharacterTranslation {

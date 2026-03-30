@@ -23,44 +23,64 @@ function slugify(input: string): string {
   return s || "item";
 }
 
-async function uniqueLessonSlug(base: string, excludeId?: string): Promise<string> {
+async function uniqueLessonSlug(
+  base: string,
+  excludeId?: string,
+): Promise<string> {
   let candidate = slugify(base) || "lesson";
   let n = 0;
   for (;;) {
-    const existing = await prisma.lesson.findUnique({ where: { slug: candidate } });
+    const existing = await prisma.lesson.findUnique({
+      where: { slug: candidate },
+    });
     if (!existing || existing.id === excludeId) return candidate;
     n += 1;
     candidate = `${slugify(base) || "lesson"}-${n}`;
   }
 }
 
-async function uniqueCategorySlug(base: string, excludeId?: string): Promise<string> {
+async function uniqueCategorySlug(
+  base: string,
+  excludeId?: string,
+): Promise<string> {
   let candidate = slugify(base) || "category";
   let n = 0;
   for (;;) {
-    const existing = await prisma.category.findUnique({ where: { slug: candidate } });
+    const existing = await prisma.category.findUnique({
+      where: { slug: candidate },
+    });
     if (!existing || existing.id === excludeId) return candidate;
     n += 1;
     candidate = `${slugify(base) || "category"}-${n}`;
   }
 }
 
-async function uniqueTopicSlug(base: string, excludeId?: string): Promise<string> {
+async function uniqueTopicSlug(
+  base: string,
+  excludeId?: string,
+): Promise<string> {
   let candidate = slugify(base) || "topic";
   let n = 0;
   for (;;) {
-    const existing = await prisma.topic.findUnique({ where: { slug: candidate } });
+    const existing = await prisma.topic.findUnique({
+      where: { slug: candidate },
+    });
     if (!existing || existing.id === excludeId) return candidate;
     n += 1;
     candidate = `${slugify(base) || "topic"}-${n}`;
   }
 }
 
-async function uniqueCharacterSlug(base: string, excludeId?: string): Promise<string> {
+async function uniqueCharacterSlug(
+  base: string,
+  excludeId?: string,
+): Promise<string> {
   let candidate = slugify(base) || "character";
   let n = 0;
   for (;;) {
-    const existing = await prisma.character.findUnique({ where: { slug: candidate } });
+    const existing = await prisma.character.findUnique({
+      where: { slug: candidate },
+    });
     if (!existing || existing.id === excludeId) return candidate;
     n += 1;
     candidate = `${slugify(base) || "character"}-${n}`;
@@ -143,7 +163,9 @@ contentAdminRouter.patch(
     });
     const body = bodySchema.parse(req.body);
 
-    const found = await prisma.category.findUnique({ where: { id: categoryId } });
+    const found = await prisma.category.findUnique({
+      where: { id: categoryId },
+    });
     if (!found) throw new HttpError(404, "Category not found");
 
     let slug = body.slug?.trim();
@@ -157,8 +179,10 @@ contentAdminRouter.patch(
       data: {
         name: body.name?.trim() ?? undefined,
         slug: slug ?? undefined,
-        description: body.description === undefined ? undefined : body.description,
-        coverImage: body.coverImage === undefined ? undefined : body.coverImage || null,
+        description:
+          body.description === undefined ? undefined : body.description,
+        coverImage:
+          body.coverImage === undefined ? undefined : body.coverImage || null,
         icon: body.icon === undefined ? undefined : body.icon,
         order: body.order ?? undefined,
       },
@@ -188,7 +212,10 @@ contentAdminRouter.delete(
 
     const lessonCount = await prisma.lesson.count({ where: { categoryId } });
     if (lessonCount > 0) {
-      throw new HttpError(400, "Category has lessons; reassign or delete lessons first");
+      throw new HttpError(
+        400,
+        "Category has lessons; reassign or delete lessons first",
+      );
     }
 
     await prisma.category.delete({ where: { id: categoryId } });
@@ -289,7 +316,8 @@ contentAdminRouter.patch(
       data: {
         name: body.name?.trim() ?? undefined,
         slug: slug ?? undefined,
-        description: body.description === undefined ? undefined : body.description,
+        description:
+          body.description === undefined ? undefined : body.description,
         parentId: body.parentId === undefined ? undefined : body.parentId,
       },
     });
@@ -323,10 +351,12 @@ contentAdminRouter.delete(
     if (lessonCount > 0) throw new HttpError(400, "Topic has lessons assigned");
 
     const quizCount = await prisma.quiz.count({ where: { topicId } });
-    if (quizCount > 0) throw new HttpError(400, "Topic is linked to quizzes; reassign first");
+    if (quizCount > 0)
+      throw new HttpError(400, "Topic is linked to quizzes; reassign first");
 
     const matchCount = await prisma.gameMatch.count({ where: { topicId } });
-    if (matchCount > 0) throw new HttpError(400, "Topic is used in game matches");
+    if (matchCount > 0)
+      throw new HttpError(400, "Topic is used in game matches");
 
     await prisma.topic.delete({ where: { id: topicId } });
 
@@ -356,9 +386,7 @@ contentAdminRouter.get(
     const { published = "all" } = querySchema.parse(req.query);
 
     const where =
-      published === "all"
-        ? {}
-        : { published: published === "true" };
+      published === "all" ? {} : { published: published === "true" };
 
     const lessons = await prisma.lesson.findMany({
       where,
@@ -391,7 +419,9 @@ contentAdminRouter.get(
         quizzes: {
           orderBy: { order: "asc" },
           include: {
-            translations: { orderBy: [{ language: "asc" }, { createdAt: "desc" }] },
+            translations: {
+              orderBy: [{ language: "asc" }, { createdAt: "desc" }],
+            },
           },
         },
         translations: { orderBy: [{ language: "asc" }, { createdAt: "desc" }] },
@@ -501,17 +531,20 @@ contentAdminRouter.patch(
       data: {
         title: body.title?.trim() ?? undefined,
         slug: slug ?? undefined,
-        description: body.description === undefined ? undefined : body.description,
+        description:
+          body.description === undefined ? undefined : body.description,
         content: body.content ?? undefined,
         hook: body.hook === undefined ? undefined : body.hook,
-        coverImage: body.coverImage === undefined ? undefined : body.coverImage || null,
+        coverImage:
+          body.coverImage === undefined ? undefined : body.coverImage || null,
         xpReward: body.xpReward ?? undefined,
         isPremium: body.isPremium ?? undefined,
         published: body.published ?? undefined,
         order: body.order ?? undefined,
         categoryId: body.categoryId === undefined ? undefined : body.categoryId,
         topicId: body.topicId === undefined ? undefined : body.topicId,
-        deepDiveContent: body.deepDiveContent === undefined ? undefined : body.deepDiveContent,
+        deepDiveContent:
+          body.deepDiveContent === undefined ? undefined : body.deepDiveContent,
       },
     });
 
@@ -625,10 +658,15 @@ contentAdminRouter.patch(
       data: {
         title: body.title?.trim() ?? undefined,
         content: body.content ?? undefined,
-        coverImage: body.coverImage === undefined ? undefined : body.coverImage || null,
+        coverImage:
+          body.coverImage === undefined ? undefined : body.coverImage || null,
         mediaType: body.mediaType === undefined ? undefined : body.mediaType,
-        mediaUrl: body.mediaUrl === undefined ? undefined : body.mediaUrl || null,
-        feedbackQuestion: body.feedbackQuestion === undefined ? undefined : body.feedbackQuestion,
+        mediaUrl:
+          body.mediaUrl === undefined ? undefined : body.mediaUrl || null,
+        feedbackQuestion:
+          body.feedbackQuestion === undefined
+            ? undefined
+            : body.feedbackQuestion,
         order: body.order ?? undefined,
       },
     });
@@ -769,10 +807,14 @@ contentAdminRouter.patch(
         question: body.question?.trim() ?? undefined,
         options: body.options ?? undefined,
         correctOption: body.correctOption ?? undefined,
-        explanation: body.explanation === undefined ? undefined : body.explanation,
+        explanation:
+          body.explanation === undefined ? undefined : body.explanation,
         order: body.order ?? undefined,
         heartLimit: body.heartLimit ?? undefined,
-        timeLimitSeconds: body.timeLimitSeconds === undefined ? undefined : body.timeLimitSeconds,
+        timeLimitSeconds:
+          body.timeLimitSeconds === undefined
+            ? undefined
+            : body.timeLimitSeconds,
         difficulty: body.difficulty === undefined ? undefined : body.difficulty,
         isActive: body.isActive ?? undefined,
         tags: body.tags ?? undefined,
@@ -872,7 +914,8 @@ contentAdminRouter.post(
       where: { quizId, language: body.language },
       select: { id: true },
     });
-    if (existing) throw new HttpError(409, "Translation for this language already exists");
+    if (existing)
+      throw new HttpError(409, "Translation for this language already exists");
 
     const translation = await prisma.quizTranslation.create({
       data: {
@@ -922,7 +965,8 @@ contentAdminRouter.patch(
     if (!existing) throw new HttpError(404, "Quiz translation not found");
 
     const baseOptions = existing.quiz.options as unknown as string[];
-    const nextOptions = body.options ?? (existing.options as unknown as string[]);
+    const nextOptions =
+      body.options ?? (existing.options as unknown as string[]);
     if (nextOptions.length !== baseOptions.length) {
       throw new HttpError(
         400,
@@ -936,7 +980,11 @@ contentAdminRouter.patch(
         where: { quizId: existing.quizId, language },
         select: { id: true },
       });
-      if (clash) throw new HttpError(409, "Translation for this language already exists");
+      if (clash)
+        throw new HttpError(
+          409,
+          "Translation for this language already exists",
+        );
     }
 
     const translation = await prisma.quizTranslation.update({
@@ -945,7 +993,8 @@ contentAdminRouter.patch(
         language: language ?? undefined,
         question: body.question?.trim() ?? undefined,
         options: body.options ?? undefined,
-        explanation: body.explanation === undefined ? undefined : body.explanation,
+        explanation:
+          body.explanation === undefined ? undefined : body.explanation,
       },
     });
 
@@ -1098,7 +1147,10 @@ contentAdminRouter.patch(
         select: { id: true },
       });
       if (languageClash) {
-        throw new HttpError(409, "Translation for this language already exists");
+        throw new HttpError(
+          409,
+          "Translation for this language already exists",
+        );
       }
     }
 
@@ -1107,7 +1159,8 @@ contentAdminRouter.patch(
       data: {
         language: language ?? undefined,
         title: body.title ?? undefined,
-        description: body.description === undefined ? undefined : body.description,
+        description:
+          body.description === undefined ? undefined : body.description,
         content: body.content ?? undefined,
         hook: body.hook === undefined ? undefined : body.hook,
         deepDiveContent:
@@ -1162,7 +1215,11 @@ contentAdminRouter.get(
     const characters = await prisma.character.findMany({
       orderBy: { createdAt: "desc" },
       include: {
-        category: { select: { id: true, name: true, slug: true } },
+        categories: {
+          include: {
+            category: { select: { id: true, name: true, slug: true } },
+          },
+        },
         unlockLesson: { select: { id: true, title: true, slug: true } },
       },
     });
@@ -1181,7 +1238,11 @@ contentAdminRouter.get(
     const character = await prisma.character.findUnique({
       where: { id: characterId },
       include: {
-        category: { select: { id: true, name: true, slug: true } },
+        categories: {
+          include: {
+            category: { select: { id: true, name: true, slug: true } },
+          },
+        },
         unlockLesson: { select: { id: true, title: true, slug: true } },
         translations: { orderBy: [{ language: "asc" }, { createdAt: "desc" }] },
       },
@@ -1206,7 +1267,7 @@ contentAdminRouter.post(
       inventionImage: z.string().url().optional().nullable().or(z.literal("")),
       xpThreshold: z.number().int().optional().nullable(),
       rarityLevel: z.string().max(50).optional().nullable(),
-      categoryId: z.string().optional().nullable(),
+      categoryIds: z.array(z.string()).optional().default([]),
       unlockLessonId: z.string().optional().nullable(),
     });
     const body = bodySchema.parse(req.body);
@@ -1225,8 +1286,21 @@ contentAdminRouter.post(
         inventionImage: body.inventionImage || undefined,
         xpThreshold: body.xpThreshold ?? undefined,
         rarityLevel: body.rarityLevel ?? undefined,
-        categoryId: body.categoryId ?? undefined,
         unlockLessonId: body.unlockLessonId ?? undefined,
+        // Create character-category relationships
+        categories: {
+          create: body.categoryIds.map((categoryId) => ({
+            categoryId,
+          })),
+        },
+      },
+      include: {
+        categories: {
+          include: {
+            category: { select: { id: true, name: true, slug: true } },
+          },
+        },
+        unlockLesson: { select: { id: true, title: true, slug: true } },
       },
     });
 
@@ -1260,18 +1334,35 @@ contentAdminRouter.patch(
       inventionImage: z.string().url().optional().nullable().or(z.literal("")),
       xpThreshold: z.number().int().optional().nullable(),
       rarityLevel: z.string().max(50).optional().nullable(),
-      categoryId: z.string().optional().nullable(),
+      categoryIds: z.array(z.string()).optional(),
       unlockLessonId: z.string().optional().nullable(),
     });
     const body = bodySchema.parse(req.body);
 
-    const found = await prisma.character.findUnique({ where: { id: characterId } });
+    const found = await prisma.character.findUnique({
+      where: { id: characterId },
+    });
     if (!found) throw new HttpError(404, "Character not found");
 
     let slug = body.slug?.trim();
     if (slug && slug !== found.slug) {
       const clash = await prisma.character.findUnique({ where: { slug } });
       if (clash) throw new HttpError(409, "Slug already in use");
+    }
+
+    // If categoryIds is provided, update the categories
+    if (body.categoryIds !== undefined) {
+      // Delete existing category relationships
+      await prisma.characterCategory.deleteMany({ where: { characterId } });
+      // Create new ones
+      if (body.categoryIds.length > 0) {
+        await prisma.characterCategory.createMany({
+          data: body.categoryIds.map((categoryId) => ({
+            characterId,
+            categoryId,
+          })),
+        });
+      }
     }
 
     const character = await prisma.character.update({
@@ -1281,12 +1372,26 @@ contentAdminRouter.patch(
         slug: slug ?? undefined,
         description: body.description ?? undefined,
         story: body.story === undefined ? undefined : body.story,
-        imageUrl: body.imageUrl === undefined ? undefined : body.imageUrl || null,
-        inventionImage: body.inventionImage === undefined ? undefined : body.inventionImage || null,
-        xpThreshold: body.xpThreshold === undefined ? undefined : body.xpThreshold,
-        rarityLevel: body.rarityLevel === undefined ? undefined : body.rarityLevel,
-        categoryId: body.categoryId === undefined ? undefined : body.categoryId,
-        unlockLessonId: body.unlockLessonId === undefined ? undefined : body.unlockLessonId,
+        imageUrl:
+          body.imageUrl === undefined ? undefined : body.imageUrl || null,
+        inventionImage:
+          body.inventionImage === undefined
+            ? undefined
+            : body.inventionImage || null,
+        xpThreshold:
+          body.xpThreshold === undefined ? undefined : body.xpThreshold,
+        rarityLevel:
+          body.rarityLevel === undefined ? undefined : body.rarityLevel,
+        unlockLessonId:
+          body.unlockLessonId === undefined ? undefined : body.unlockLessonId,
+      },
+      include: {
+        categories: {
+          include: {
+            category: { select: { id: true, name: true, slug: true } },
+          },
+        },
+        unlockLesson: { select: { id: true, title: true, slug: true } },
       },
     });
 
@@ -1371,7 +1476,8 @@ contentAdminRouter.post(
       where: { characterId, language: body.language },
       select: { id: true },
     });
-    if (existing) throw new HttpError(409, "Translation for this language already exists");
+    if (existing)
+      throw new HttpError(409, "Translation for this language already exists");
 
     const translation = await prisma.characterTranslation.create({
       data: {
@@ -1424,7 +1530,11 @@ contentAdminRouter.patch(
         where: { characterId: existing.characterId, language },
         select: { id: true },
       });
-      if (clash) throw new HttpError(409, "Translation for this language already exists");
+      if (clash)
+        throw new HttpError(
+          409,
+          "Translation for this language already exists",
+        );
     }
 
     const translation = await prisma.characterTranslation.update({

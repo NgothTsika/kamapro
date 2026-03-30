@@ -77,9 +77,24 @@ model Category {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  lessons     Lesson[]
-  characters  Character[]
-  submissions ContentSubmission[]
+  lessons            Lesson[]
+  characterCategories CharacterCategory[]
+  submissions        ContentSubmission[]
+}
+
+// Junction table for many-to-many relationship between Character and Category
+model CharacterCategory {
+  id          String   @id @default(cuid())
+  characterId String
+  categoryId  String
+  createdAt   DateTime @default(now())
+
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, categoryId])
+  @@index([characterId])
+  @@index([categoryId])
 }
 
 model Lesson {
@@ -281,8 +296,8 @@ model Character {
   // Legacy fields (kept for backwards compatibility)
   inventionImage String?
 
-  categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  // Many-to-many relationship with categories
+  categories CharacterCategory[]
 
   unlockLessonId String? @unique
   unlockLesson   Lesson? @relation(fields: [unlockLessonId], references: [id], onDelete: SetNull)
@@ -296,7 +311,6 @@ model Character {
   @@index([eventType])
   @@index([traditionType])
   @@index([conceptType])
-  @@index([categoryId])
   @@index([country])
 }
 

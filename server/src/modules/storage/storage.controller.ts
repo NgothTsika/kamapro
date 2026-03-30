@@ -326,12 +326,21 @@ router.post(
   singleFileUpload,
   async (req: Request, res: Response) => {
     try {
-      const { bucket, folder } = req.body;
+      // Debug logging
+      console.log("Upload request received");
+      console.log("req.body:", req.body);
+      console.log("req.file:", (req as any).file);
+
+      const { bucket, folder } = req.body || {};
 
       if (!bucket) {
         return res.status(400).json({
           success: false,
           error: "bucket parameter is required",
+          debug: {
+            bodyExists: !!req.body,
+            bodyKeys: req.body ? Object.keys(req.body) : [],
+          },
         });
       }
 
@@ -341,6 +350,11 @@ router.post(
         return res.status(400).json({
           success: false,
           error: "No file provided",
+          debug: {
+            bodyExists: !!req.body,
+            bodyKeys: req.body ? Object.keys(req.body) : [],
+            fileExists: !!file,
+          },
         });
       }
 

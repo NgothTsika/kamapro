@@ -156,6 +156,10 @@ contentRouter.get(
         coverImage: true,
         xpReward: true,
         isPremium: true,
+        titleAudioUrl: true, // NEW: Audio for lesson title
+        hookAudioUrl: true, // NEW: Audio for intro/hook
+        contentAudioUrl: true, // NEW: Audio narration for main content
+        deepDiveAudioUrl: true, // NEW: Audio for deep dive content
         category: { select: { id: true, slug: true, name: true } },
         topic: { select: { id: true, slug: true, name: true } },
         chapters: {
@@ -182,11 +186,21 @@ contentRouter.get(
             difficulty: true,
             tags: true,
             topicId: true,
+            questionAudioUrl: true, // NEW: Audio narration for question
+            isPoll: true, // NEW: Mark as poll question
+            pollDescription: true, // NEW: Context for poll question
+            pollResults: true, // NEW: Vote percentages per option
+            totalPollVotes: true, // NEW: Total votes cast
             translations: language
               ? {
                   where: { language },
                   take: 1,
-                  select: { question: true, options: true, explanation: true },
+                  select: {
+                    question: true,
+                    options: true,
+                    explanation: true,
+                    pollDescription: true,
+                  },
                 }
               : false,
           },
@@ -377,11 +391,21 @@ contentRouter.get(
         difficulty: true,
         tags: true,
         topicId: true,
+        questionAudioUrl: true, // NEW: Audio narration for question
+        isPoll: true, // NEW: Mark as poll question
+        pollDescription: true, // NEW: Context for poll question
+        pollResults: true, // NEW: Vote percentages per option
+        totalPollVotes: true, // NEW: Total votes cast
         translations: language
           ? {
               where: { language },
               take: 1,
-              select: { question: true, options: true, explanation: true },
+              select: {
+                question: true,
+                options: true,
+                explanation: true,
+                pollDescription: true,
+              },
             }
           : false,
         // Do NOT return correctOption to the client by default.

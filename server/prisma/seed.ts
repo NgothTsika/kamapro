@@ -18,7 +18,7 @@ async function main() {
 
   // ==================== ADMIN USER ====================
   const adminEmail = "admin@kamagame.com";
-  const adminPassword = "Admin@ngoth09"; // CHANGE THIS IN PRODUCTION!
+  const adminPassword = "Admin@ngoth09"; // ⚠️ CHANGE THIS IN PRODUCTION! Use environment variable instead
   const adminPasswordHash = await bcrypt.hash(adminPassword, 10);
 
   const admin = await prisma.user.upsert({
@@ -680,7 +680,9 @@ async function main() {
         "A fictional guide that helps players learn African history.",
       story:
         "Kama collects stories, facts, and legends from across the continent.",
-      categoryId: category.id,
+      categories: {
+        connect: [{ id: category.id }],
+      },
       unlockLessonId: lesson.id,
       rarityLevel: "common",
     },
@@ -693,7 +695,9 @@ async function main() {
         "Kama collects stories, facts, and legends from across the continent.",
       imageUrl: null,
       inventionImage: null,
-      categoryId: category.id,
+      categories: {
+        connect: [{ id: category.id }],
+      },
       xpThreshold: null,
       rarityLevel: "common",
       unlockLessonId: lesson.id,

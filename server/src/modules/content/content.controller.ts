@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/http";
 import { contentAdminRouter } from "./content-admin.controller";
+import { pollRouter } from "../quiz/poll.controller"; // NEW: Import poll router
 
 /** Merge localized quiz copy when `translations` was loaded for a single language; strip `translations` from the payload. */
 function applyQuizLanguage<
@@ -30,6 +31,7 @@ function applyQuizLanguage<
 
 export const contentRouter = Router();
 contentRouter.use(contentAdminRouter);
+contentRouter.use(pollRouter); // NEW: Mount poll router
 
 contentRouter.get(
   "/categories",
@@ -53,7 +55,8 @@ contentRouter.get(
 contentRouter.get(
   "/lessons",
   asyncHandler(async (req, res) => {
-    const language = typeof req.query.language === "string" ? req.query.language : undefined;
+    const language =
+      typeof req.query.language === "string" ? req.query.language : undefined;
     const lessons = await prisma.lesson.findMany({
       where: { published: true },
       orderBy: [{ order: "asc" }, { createdAt: "desc" }],
@@ -88,18 +91,16 @@ contentRouter.get(
 contentRouter.get(
   "/characters",
   asyncHandler(async (req, res) => {
-    const language = typeof req.query.language === "string" ? req.query.language : undefined;
+    const language =
+      typeof req.query.language === "string" ? req.query.language : undefined;
     const characters = await prisma.character.findMany({
       orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        description: true,
-        story: true,
-        imageUrl: true,
-        rarityLevel: true,
-        category: { select: { id: true, name: true, slug: true } },
+      include: {
+        categories: {
+          include: {
+            category: { select: { id: true, name: true, slug: true } },
+          },
+        },
         translations: language
           ? {
               where: { language },
@@ -110,7 +111,7 @@ contentRouter.get(
                 story: true,
               },
             }
-          : false,
+          : undefined,
       },
     });
 
@@ -140,7 +141,8 @@ contentRouter.get(
   asyncHandler(async (req, res) => {
     const paramsSchema = z.object({ slug: z.string().min(1) });
     const { slug } = paramsSchema.parse(req.params);
-    const language = typeof req.query.language === "string" ? req.query.language : undefined;
+    const language =
+      typeof req.query.language === "string" ? req.query.language : undefined;
 
     const lesson = await prisma.lesson.findUnique({
       where: { slug },
@@ -158,7 +160,14 @@ contentRouter.get(
         topic: { select: { id: true, slug: true, name: true } },
         chapters: {
           orderBy: { order: "asc" },
-          select: { id: true, title: true, order: true, content: true, mediaType: true, mediaUrl: true },
+          select: {
+            id: true,
+            title: true,
+            order: true,
+            content: true,
+            mediaType: true,
+            mediaUrl: true,
+          },
         },
         quizzes: {
           where: { isActive: true },
@@ -186,7 +195,12 @@ contentRouter.get(
           ? {
               where: { language },
               take: 1,
-              select: { title: true, description: true, hook: true, content: true },
+              select: {
+                title: true,
+                description: true,
+                hook: true,
+                content: true,
+              },
             }
           : false,
       },
@@ -194,9 +208,10 @@ contentRouter.get(
 
     if (!lesson) return res.status(404).json({ error: "Lesson not found" });
 
-    const translation = language && Array.isArray(lesson.translations)
-      ? lesson.translations[0]
-      : null;
+    const translation =
+      language && Array.isArray(lesson.translations)
+        ? lesson.translations[0]
+        : null;
 
     const normalized = translation
       ? {
@@ -225,7 +240,8 @@ contentRouter.get(
   asyncHandler(async (req, res) => {
     const paramsSchema = z.object({ lessonId: z.string().min(1) });
     const { lessonId } = paramsSchema.parse(req.params);
-    const language = typeof req.query.language === "string" ? req.query.language : undefined;
+    const language =
+      typeof req.query.language === "string" ? req.query.language : undefined;
 
     if (language) {
       const lesson = await prisma.lesson.findUnique({
@@ -300,7 +316,13 @@ contentRouter.get(
         topic: { select: { id: true, slug: true, name: true } },
         chapters: {
           orderBy: { order: "asc" },
-          select: { id: true, title: true, order: true, mediaType: true, mediaUrl: true },
+          select: {
+            id: true,
+            title: true,
+            order: true,
+            mediaType: true,
+            mediaUrl: true,
+          },
         },
       },
     });
@@ -339,7 +361,8 @@ contentRouter.get(
   asyncHandler(async (req, res) => {
     const paramsSchema = z.object({ lessonId: z.string().min(1) });
     const { lessonId } = paramsSchema.parse(req.params);
-    const language = typeof req.query.language === "string" ? req.query.language : undefined;
+    const language =
+      typeof req.query.language === "string" ? req.query.language : undefined;
 
     const quizzes = await prisma.quiz.findMany({
       where: { lessonId, isActive: true },
@@ -365,7 +388,9 @@ contentRouter.get(
       },
     });
 
-    const payload = language ? quizzes.map((q) => applyQuizLanguage(q)) : quizzes;
+    const payload = language
+      ? quizzes.map((q) => applyQuizLanguage(q))
+      : quizzes;
 
     res.status(200).json({ quizzes: payload });
   }),
@@ -376,38 +401,35 @@ contentRouter.get(
   asyncHandler(async (req, res) => {
     const paramsSchema = z.object({ slug: z.string().min(1) });
     const { slug } = paramsSchema.parse(req.params);
-    const language = typeof req.query.language === "string" ? req.query.language : undefined;
+    const language =
+      typeof req.query.language === "string" ? req.query.language : undefined;
 
     const character = await prisma.character.findUnique({
       where: { slug },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        description: true,
-        story: true,
-        imageUrl: true,
-        inventionImage: true,
-        xpThreshold: true,
-        rarityLevel: true,
-        category: { select: { id: true, slug: true, name: true } },
+      include: {
+        categories: {
+          include: {
+            category: { select: { id: true, slug: true, name: true } },
+          },
+        },
         unlockLesson: { select: { id: true, slug: true } },
-        collectedBy: false,
         translations: language
           ? {
               where: { language },
               take: 1,
               select: { name: true, description: true, story: true },
             }
-          : false,
+          : undefined,
       },
     });
 
-    if (!character) return res.status(404).json({ error: "Character not found" });
+    if (!character)
+      return res.status(404).json({ error: "Character not found" });
 
-    const translation = language && Array.isArray(character.translations)
-      ? character.translations[0]
-      : null;
+    const translation =
+      language && Array.isArray(character.translations)
+        ? character.translations[0]
+        : null;
 
     res.status(200).json({
       character: translation
@@ -427,38 +449,35 @@ contentRouter.get(
   asyncHandler(async (req, res) => {
     const paramsSchema = z.object({ characterId: z.string().min(1) });
     const { characterId } = paramsSchema.parse(req.params);
-    const language = typeof req.query.language === "string" ? req.query.language : undefined;
+    const language =
+      typeof req.query.language === "string" ? req.query.language : undefined;
 
     const character = await prisma.character.findUnique({
       where: { id: characterId },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        description: true,
-        story: true,
-        imageUrl: true,
-        inventionImage: true,
-        xpThreshold: true,
-        rarityLevel: true,
-        category: { select: { id: true, slug: true, name: true } },
+      include: {
+        categories: {
+          include: {
+            category: { select: { id: true, slug: true, name: true } },
+          },
+        },
         unlockLesson: { select: { id: true, slug: true } },
-        collectedBy: false,
         translations: language
           ? {
               where: { language },
               take: 1,
               select: { name: true, description: true, story: true },
             }
-          : false,
+          : undefined,
       },
     });
 
-    if (!character) return res.status(404).json({ error: "Character not found" });
+    if (!character)
+      return res.status(404).json({ error: "Character not found" });
 
-    const translation = language && Array.isArray(character.translations)
-      ? character.translations[0]
-      : null;
+    const translation =
+      language && Array.isArray(character.translations)
+        ? character.translations[0]
+        : null;
 
     res.status(200).json({
       character: translation
@@ -472,4 +491,3 @@ contentRouter.get(
     });
   }),
 );
-

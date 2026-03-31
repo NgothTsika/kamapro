@@ -452,6 +452,10 @@ contentAdminRouter.post(
       categoryId: z.string().optional().nullable(),
       topicId: z.string().optional().nullable(),
       deepDiveContent: z.string().optional().nullable(),
+      titleAudioUrl: z.string().url().optional().nullable(), // NEW
+      hookAudioUrl: z.string().url().optional().nullable(), // NEW
+      contentAudioUrl: z.string().url().optional().nullable(), // NEW
+      deepDiveAudioUrl: z.string().url().optional().nullable(), // NEW
     });
     const body = bodySchema.parse(req.body);
     const slug = body.slug?.trim() || (await uniqueLessonSlug(body.title));
@@ -474,6 +478,10 @@ contentAdminRouter.post(
         categoryId: body.categoryId ?? undefined,
         topicId: body.topicId ?? undefined,
         deepDiveContent: body.deepDiveContent ?? undefined,
+        titleAudioUrl: body.titleAudioUrl ?? undefined, // NEW
+        hookAudioUrl: body.hookAudioUrl ?? undefined, // NEW
+        contentAudioUrl: body.contentAudioUrl ?? undefined, // NEW
+        deepDiveAudioUrl: body.deepDiveAudioUrl ?? undefined, // NEW
       },
     });
 
@@ -512,6 +520,10 @@ contentAdminRouter.patch(
       categoryId: z.string().optional().nullable(),
       topicId: z.string().optional().nullable(),
       deepDiveContent: z.string().optional().nullable(),
+      titleAudioUrl: z.string().url().optional().nullable(), // NEW
+      hookAudioUrl: z.string().url().optional().nullable(), // NEW
+      contentAudioUrl: z.string().url().optional().nullable(), // NEW
+      deepDiveAudioUrl: z.string().url().optional().nullable(), // NEW
     });
     const body = bodySchema.parse(req.body);
 
@@ -545,6 +557,16 @@ contentAdminRouter.patch(
         topicId: body.topicId === undefined ? undefined : body.topicId,
         deepDiveContent:
           body.deepDiveContent === undefined ? undefined : body.deepDiveContent,
+        titleAudioUrl:
+          body.titleAudioUrl === undefined ? undefined : body.titleAudioUrl, // NEW
+        hookAudioUrl:
+          body.hookAudioUrl === undefined ? undefined : body.hookAudioUrl, // NEW
+        contentAudioUrl:
+          body.contentAudioUrl === undefined ? undefined : body.contentAudioUrl, // NEW
+        deepDiveAudioUrl:
+          body.deepDiveAudioUrl === undefined
+            ? undefined
+            : body.deepDiveAudioUrl, // NEW
       },
     });
 
@@ -720,7 +742,7 @@ contentAdminRouter.post(
     const bodySchema = z.object({
       question: z.string().min(1),
       options: z.array(z.string()).min(2),
-      correctOption: z.number().int().min(0),
+      correctOption: z.number().int().min(0).optional().nullable(),
       explanation: z.string().optional().nullable(),
       order: z.number().int().optional(),
       heartLimit: z.number().int().min(0).optional(),
@@ -729,10 +751,40 @@ contentAdminRouter.post(
       isActive: z.boolean().optional(),
       tags: z.array(z.string()).optional(),
       topicId: z.string().optional().nullable(),
+      questionAudioUrl: z.string().url().optional().nullable(), // NEW
+      isPoll: z.boolean().optional(), // NEW
+      pollDescription: z.string().optional().nullable(), // NEW
     });
     const body = bodySchema.parse(req.body);
 
-    if (body.correctOption >= body.options.length) {
+    // Validate poll questions should not have correctOption
+    if (
+      body.isPoll &&
+      body.correctOption !== null &&
+      body.correctOption !== undefined
+    ) {
+      throw new HttpError(
+        400,
+        "Poll questions should not have a correct answer",
+      );
+    }
+
+    // Validate regular quizzes must have correctOption
+    if (
+      !body.isPoll &&
+      (body.correctOption === null || body.correctOption === undefined)
+    ) {
+      throw new HttpError(
+        400,
+        "Regular quiz questions must have a correct answer",
+      );
+    }
+
+    if (
+      body.correctOption !== null &&
+      body.correctOption !== undefined &&
+      body.correctOption >= body.options.length
+    ) {
       throw new HttpError(400, "correctOption index out of range");
     }
 
@@ -744,15 +796,18 @@ contentAdminRouter.post(
         lessonId,
         question: body.question.trim(),
         options: body.options,
-        correctOption: body.correctOption,
-        explanation: body.explanation ?? undefined,
+        correctOption: body.isPoll ? null : body.correctOption,
+        explanation: body.isPoll ? null : (body.explanation ?? undefined),
         order: body.order ?? 0,
-        heartLimit: body.heartLimit ?? 4,
+        heartLimit: body.isPoll ? undefined : (body.heartLimit ?? 4),
         timeLimitSeconds: body.timeLimitSeconds ?? undefined,
-        difficulty: body.difficulty ?? undefined,
+        difficulty: body.isPoll ? null : (body.difficulty ?? undefined),
         isActive: body.isActive ?? true,
         tags: body.tags ?? [],
         topicId: body.topicId ?? undefined,
+        questionAudioUrl: body.questionAudioUrl ?? undefined, // NEW
+        isPoll: body.isPoll ?? false, // NEW
+        pollDescription: body.pollDescription ?? undefined, // NEW
       },
     });
 
@@ -762,7 +817,7 @@ contentAdminRouter.post(
         action: "create_quiz",
         entityType: "quiz",
         entityId: quiz.id,
-        changes: { lessonId, question: quiz.question },
+        changes: { lessonId, question: quiz.question, isPoll: body.isPoll },
       },
     });
 
@@ -780,7 +835,7 @@ contentAdminRouter.patch(
     const bodySchema = z.object({
       question: z.string().min(1).optional(),
       options: z.array(z.string()).min(2).optional(),
-      correctOption: z.number().int().min(0).optional(),
+      correctOption: z.number().int().min(0).optional().nullable(),
       explanation: z.string().optional().nullable(),
       order: z.number().int().optional(),
       heartLimit: z.number().int().min(0).optional(),
@@ -789,6 +844,9 @@ contentAdminRouter.patch(
       isActive: z.boolean().optional(),
       tags: z.array(z.string()).optional(),
       topicId: z.string().optional().nullable(),
+      questionAudioUrl: z.string().url().optional().nullable(), // NEW
+      isPoll: z.boolean().optional(), // NEW
+      pollDescription: z.string().optional().nullable(), // NEW
     });
     const body = bodySchema.parse(req.body);
 
@@ -797,7 +855,29 @@ contentAdminRouter.patch(
 
     const options = body.options ?? (existing.options as unknown as string[]);
     const correctOption = body.correctOption ?? existing.correctOption;
-    if (correctOption >= options.length) {
+    const isPoll = body.isPoll ?? existing.isPoll;
+
+    // Validate poll questions should not have correctOption
+    if (isPoll && correctOption !== null && correctOption !== undefined) {
+      throw new HttpError(
+        400,
+        "Poll questions should not have a correct answer",
+      );
+    }
+
+    // Validate regular quizzes must have correctOption
+    if (!isPoll && (correctOption === null || correctOption === undefined)) {
+      throw new HttpError(
+        400,
+        "Regular quiz questions must have a correct answer",
+      );
+    }
+
+    if (
+      correctOption !== null &&
+      correctOption !== undefined &&
+      correctOption >= options.length
+    ) {
       throw new HttpError(400, "correctOption index out of range");
     }
 
@@ -806,19 +886,33 @@ contentAdminRouter.patch(
       data: {
         question: body.question?.trim() ?? undefined,
         options: body.options ?? undefined,
-        correctOption: body.correctOption ?? undefined,
-        explanation:
-          body.explanation === undefined ? undefined : body.explanation,
+        correctOption: isPoll ? null : (body.correctOption ?? undefined),
+        explanation: isPoll
+          ? null
+          : body.explanation === undefined
+            ? undefined
+            : body.explanation,
         order: body.order ?? undefined,
-        heartLimit: body.heartLimit ?? undefined,
+        heartLimit: isPoll ? undefined : (body.heartLimit ?? undefined),
         timeLimitSeconds:
           body.timeLimitSeconds === undefined
             ? undefined
             : body.timeLimitSeconds,
-        difficulty: body.difficulty === undefined ? undefined : body.difficulty,
+        difficulty: isPoll
+          ? null
+          : body.difficulty === undefined
+            ? undefined
+            : body.difficulty,
         isActive: body.isActive ?? undefined,
         tags: body.tags ?? undefined,
         topicId: body.topicId === undefined ? undefined : body.topicId,
+        questionAudioUrl:
+          body.questionAudioUrl === undefined
+            ? undefined
+            : body.questionAudioUrl, // NEW
+        isPoll: body.isPoll ?? undefined, // NEW
+        pollDescription:
+          body.pollDescription === undefined ? undefined : body.pollDescription, // NEW
       },
     });
 
@@ -890,12 +984,13 @@ contentAdminRouter.post(
       question: z.string().min(1),
       options: z.array(z.string()).min(2),
       explanation: z.string().optional().nullable(),
+      pollDescription: z.string().optional().nullable(), // NEW
     });
     const body = bodySchema.parse(req.body);
 
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
-      select: { id: true, options: true, correctOption: true },
+      select: { id: true, options: true, correctOption: true, isPoll: true },
     });
     if (!quiz) throw new HttpError(404, "Quiz not found");
 
@@ -906,7 +1001,11 @@ contentAdminRouter.post(
         `Translated options must have the same length as the base quiz (${baseOptions.length})`,
       );
     }
-    if (quiz.correctOption >= body.options.length) {
+    if (
+      !quiz.isPoll &&
+      quiz.correctOption !== null &&
+      quiz.correctOption >= body.options.length
+    ) {
       throw new HttpError(400, "Base quiz correctOption index is invalid");
     }
 
@@ -923,7 +1022,8 @@ contentAdminRouter.post(
         language: body.language,
         question: body.question.trim(),
         options: body.options,
-        explanation: body.explanation ?? undefined,
+        explanation: quiz.isPoll ? null : (body.explanation ?? undefined),
+        pollDescription: body.pollDescription ?? undefined, // NEW
       },
     });
 
@@ -953,13 +1053,21 @@ contentAdminRouter.patch(
       question: z.string().min(1).optional(),
       options: z.array(z.string()).min(2).optional(),
       explanation: z.string().optional().nullable(),
+      pollDescription: z.string().optional().nullable(), // NEW
     });
     const body = bodySchema.parse(req.body);
 
     const existing = await prisma.quizTranslation.findUnique({
       where: { id: translationId },
       include: {
-        quiz: { select: { id: true, options: true, correctOption: true } },
+        quiz: {
+          select: {
+            id: true,
+            options: true,
+            correctOption: true,
+            isPoll: true,
+          },
+        },
       },
     });
     if (!existing) throw new HttpError(404, "Quiz translation not found");
@@ -993,8 +1101,13 @@ contentAdminRouter.patch(
         language: language ?? undefined,
         question: body.question?.trim() ?? undefined,
         options: body.options ?? undefined,
-        explanation:
-          body.explanation === undefined ? undefined : body.explanation,
+        explanation: existing.quiz.isPoll
+          ? null
+          : body.explanation === undefined
+            ? undefined
+            : body.explanation,
+        pollDescription:
+          body.pollDescription === undefined ? undefined : body.pollDescription, // NEW
       },
     });
 

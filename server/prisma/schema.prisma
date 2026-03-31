@@ -57,6 +57,7 @@ model User {
   followers         UserFollow[]          @relation("following")
   following         UserFollow[]          @relation("follower")
   bookmarks         Bookmark[]
+  pollVotes         PollVote[]            // User's votes on poll questions
 }
 
 enum UserRole {
@@ -119,6 +120,12 @@ model Lesson {
   topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
 
   deepDiveContent String?
+
+  // Audio support
+  titleAudioUrl       String?  // Audio for lesson title
+  hookAudioUrl        String?  // Audio for the intro/hook
+  contentAudioUrl     String?  // Audio narration for main content
+  deepDiveAudioUrl    String?  // Audio for deep dive content
 
   // Self‑relations (many-to-many via junction tables)
   prerequisites   LessonPrerequisite[] @relation("LessonPrerequisites_lesson")
@@ -197,10 +204,10 @@ model Quiz {
   lessonId         String
   lesson           Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   question         String
-  type             String   @default("multiple_choice") // "true_false", "multiple_choice", "image_choice"
+  type             String   @default("multiple_choice") // "true_false", "multiple_choice", "image_choice", "poll"
   options          Json     // array of strings for text options
   optionImages     Json?    // array of image URLs for image_choice type
-  correctOption    Int      // index of correct answer
+  correctOption    Int?     // index of correct answer (null for polls since they don't have right/wrong)
   explanation      String?
   order            Int      @default(0)
   heartLimit       Int      @default(4)
@@ -215,21 +222,32 @@ model Quiz {
   topicId String?
   topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
 
-  sessions   QuizSession[]
-  gameRounds GameRound[]
-  attempts   QuizAttempt[]
-  translations QuizTranslation[]
+  // Audio support
+  questionAudioUrl String?  // Audio narration for the question
+
+  // Poll-specific fields
+  isPoll          Boolean  @default(false) // Mark as poll question (no scoring, just collection)
+  pollDescription String?  // Optional context for poll question (e.g., "What do you think about...")
+  pollResults     Json?    // Stores vote counts per option: { "0": 15, "1": 42, "2": 8, "3": 5 }
+  totalPollVotes  Int      @default(0) // Total number of votes cast
+
+  sessions        QuizSession[]
+  gameRounds      GameRound[]
+  attempts        QuizAttempt[]
+  translations    QuizTranslation[]
+  pollVotes       PollVote[] // New relation for poll voting
 }
 
 model QuizTranslation {
-  id          String   @id @default(cuid())
-  quizId      String
-  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  language    String
-  question    String
-  options     Json
-  explanation String?
-  createdAt   DateTime @default(now())
+  id              String   @id @default(cuid())
+  quizId          String
+  quiz            Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  language        String
+  question        String
+  options         Json
+  explanation     String?
+  pollDescription String?  // Translation for poll context/description
+  createdAt       DateTime @default(now())
 
   @@unique([quizId, language])
 }
@@ -258,6 +276,19 @@ model QuizAttempt {
   isCorrect      Boolean
   heartLost      Boolean     @default(false)
   createdAt      DateTime    @default(now())
+}
+
+// Poll voting - for collecting user feedback without scoring
+model PollVote {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quizId         String   // Poll question ID
+  quiz           Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  selectedOption Int      // Index of the selected poll option
+  votedAt        DateTime @default(now())
+
+  @@unique([userId, quizId]) // One vote per user per poll
 }
 
 model Character {

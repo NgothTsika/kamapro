@@ -98,6 +98,21 @@ model CharacterCategory {
   @@index([categoryId])
 }
 
+// Junction table for many-to-many relationship between Lesson and Character
+model LessonCharacter {
+  id          String   @id @default(cuid())
+  lessonId    String
+  characterId String
+  createdAt   DateTime @default(now())
+
+  lesson    Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, characterId])
+  @@index([lessonId])
+  @@index([characterId])
+}
+
 model Lesson {
   id          String   @id @default(cuid())
   title       String
@@ -141,6 +156,7 @@ model Lesson {
   offlineContent   OfflineContent[]
   collectionItems  CollectionItem[]
   unlocksCharacter Character?
+  relatedCharacters LessonCharacter[]
   userProgress     UserProgress[]
   lessonFeedback   LessonFeedback[]
   comments         Comment[]
@@ -329,6 +345,7 @@ model Character {
 
   // Many-to-many relationship with categories
   categories CharacterCategory[]
+  relatedLessons LessonCharacter[]
 
   unlockLessonId String? @unique
   unlockLesson   Lesson? @relation(fields: [unlockLessonId], references: [id], onDelete: SetNull)

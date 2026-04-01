@@ -54,10 +54,25 @@ model User {
   userAnalytics     UserAnalytics?
   comments          Comment[]
   auditLogs         AuditLog[]            @relation("adminLogs")
+  // ...existing code...
   followers         UserFollow[]          @relation("following")
   following         UserFollow[]          @relation("follower")
   bookmarks         Bookmark[]
   pollVotes         PollVote[]            // User's votes on poll questions
+  
+  // Hearts and recovery
+  hearts            UserHearts?
+  heartRecoveryEvents HeartRecoveryEvent[]
+  
+  // Streaks (detailed tracking via UserStreak model)
+  userStreak        UserStreak?
+  streakCheckIns    StreakCheckIn[]
+  
+  // Character progression
+  characterProgress UserCharacterProgress[]
+  
+  // Daily challenges
+  challengeProgress UserChallengeProgress[]
 }
 
 enum UserRole {
@@ -346,6 +361,10 @@ model Character {
   // Many-to-many relationship with categories
   categories CharacterCategory[]
   relatedLessons LessonCharacter[]
+  
+  // Character unlock/progression
+  unlockConditions CharacterUnlock[]
+  userProgress     UserCharacterProgress[]
 
   unlockLessonId String? @unique
   unlockLesson   Lesson? @relation(fields: [unlockLessonId], references: [id], onDelete: SetNull)
@@ -557,6 +576,7 @@ model Topic {
   name        String   @unique
   slug        String   @unique
   description String?
+  coverImage  String?
   parentId    String?
   parent      Topic?   @relation("TopicSubcategories", fields: [parentId], references: [id], onDelete: SetNull)
   children    Topic[]  @relation("TopicSubcategories")
@@ -783,4 +803,175 @@ model Bookmark {
   createdAt DateTime @default(now())
 
   @@unique([userId, lessonId])
+}
+
+// ---------- Hearts & Recovery System ----------
+// Gamification mechanic inspired by Duolingo/Paladin
+model UserHearts {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Current heart state
+  hearts          Int      @default(5)     // Max hearts (1-5 typically)
+  maxHearts       Int      @default(5)
+  
+  // Recovery timing
+  lastHeartLossAt DateTime?              // When the last heart was lost
+  lastRecoveredAt DateTime?              // When the last heart was recovered
+  recoveryTimeMs  Int      @default(3600000) // 1 hour in milliseconds (configurable per tier)
+  
+  // Premium benefits
+  premiumUntil    DateTime?              // Premium access grants extra hearts/faster recovery
+  
+  // Statistics
+  totalHeartLosses Int      @default(0)   // Lifetime stat tracking
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([lastHeartLossAt])
+}
+
+// Track heart recovery events for analytics
+model HeartRecoveryEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  heartsRecovered Int
+  fromHearts      Int      // How many hearts they had before recovery
+  toHearts        Int      // How many after recovery
+  recoveryType    String   // "automatic", "premium_boost", "achievement_reward"
+  
+  createdAt DateTime @default(now())
+  
+  @@index([userId, createdAt])
+}
+
+// ---------- Streak System ----------
+// Track daily active streaks (inspired by Duolingo)
+model UserStreak {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Current streak
+  currentStreak   Int      @default(0)      // Days in current streak
+  longestStreak   Int      @default(0)      // Best streak achieved
+  
+  // Streak tracking
+  lastActivityAt  DateTime?                // Last time user did an activity
+  streakStartedAt DateTime?                // When current streak started
+  
+  // Lost streak tracking
+  streakFrozenUntil DateTime?              // Premium feature: freeze streak for 24h
+  freezesRemaining Int      @default(0)     // Number of streak freezes remaining
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([lastActivityAt])
+}
+
+// Track daily active check-ins for streaks
+model StreakCheckIn {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  date      DateTime // Date of check-in (normalized to start of day)
+  xpEarned  Int      // XP earned that day
+  lessonCount Int     // Number of lessons completed
+  quizCount Int       // Number of quizzes completed
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// ---------- Character Unlock System ----------
+// Lock/unlock characters based on lesson progress
+model CharacterUnlock {
+  id          String   @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  unlockType  String   // "lesson_completion", "xp_threshold", "achievement", "purchase"
+  lessonId    String?  // If unlocked by completing a lesson
+  xpRequired  Int?     // If unlocked by reaching XP threshold
+  xpCost      Int?     // XP cost to unlock (for purchase type)
+  
+  description String?  // Description of unlock condition
+  order       Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([characterId])
+  @@index([unlockType])
+}
+
+// Track which characters user has unlocked
+model UserCharacterProgress {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characterId   String
+  character     Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  unlockedAt    DateTime?
+  isCollected   Boolean  @default(false)  // Added to their collection
+  favoriteLevel Int      @default(0)      // 0-3 hearts showing favorite
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([userId, characterId])
+  @@index([userId, unlockedAt])
+}
+
+// ---------- Daily Rewards & Challenges ----------
+// Daily challenges to encourage engagement
+model DailyChallenge {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  
+  challengeType String   // "lessons_completed", "quizzes_passed", "streak_maintained", "hearts_full"
+  targetCount Int       // How many to complete
+  xpReward    Int       // XP given for completion
+  
+  active      Boolean  @default(true)
+  startDate   DateTime @default(now())
+  endDate     DateTime?
+  
+  // Track user progress on this challenge
+  userProgress UserChallengeProgress[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([active, startDate])
+}
+
+// Track user progress on daily challenges
+model UserChallengeProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challengeId String
+  challenge   DailyChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  
+  progress    Int      @default(0)  // Current progress toward target
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([userId, challengeId])
+  @@index([userId, completed])
 }

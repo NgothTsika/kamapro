@@ -129,6 +129,7 @@ contentRouter.get(
         name: true,
         slug: true,
         description: true,
+        coverImage: true,
         parentId: true,
       },
     });

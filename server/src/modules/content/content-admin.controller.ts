@@ -256,6 +256,7 @@ contentAdminRouter.post(
       name: z.string().min(1).max(200),
       slug: z.string().min(1).max(200).optional(),
       description: z.string().max(5000).optional().nullable(),
+      coverImage: z.string().optional().nullable(),
       parentId: z.string().optional().nullable(),
     });
     const body = bodySchema.parse(req.body);
@@ -269,6 +270,7 @@ contentAdminRouter.post(
         name: body.name.trim(),
         slug,
         description: body.description ?? undefined,
+        coverImage: body.coverImage ?? undefined,
         parentId: body.parentId ?? undefined,
       },
     });
@@ -298,6 +300,7 @@ contentAdminRouter.patch(
       name: z.string().min(1).max(200).optional(),
       slug: z.string().min(1).max(200).optional(),
       description: z.string().max(5000).optional().nullable(),
+      coverImage: z.string().optional().nullable(),
       parentId: z.string().optional().nullable(),
     });
     const body = bodySchema.parse(req.body);
@@ -318,6 +321,8 @@ contentAdminRouter.patch(
         slug: slug ?? undefined,
         description:
           body.description === undefined ? undefined : body.description,
+        coverImage:
+          body.coverImage === undefined ? undefined : body.coverImage,
         parentId: body.parentId === undefined ? undefined : body.parentId,
       },
     });

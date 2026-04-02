@@ -975,3 +975,29 @@ model UserChallengeProgress {
   @@unique([userId, challengeId])
   @@index([userId, completed])
 }
+
+// Gamification system configuration
+model GameConfig {
+  id String @id @default("gamification") // Single row to store all config
+  
+  // Hearts configuration
+  heartsMaxHearts              Int    @default(5)
+  heartsRecoveryTimeMs         Int    @default(3600000) // 1 hour
+  heartsPremiumRecoveryTimeMs  Int    @default(1800000) // 30 minutes
+  
+  // Streaks configuration
+  streaksCheckInHours          Int    @default(24)
+  streaksXpMultiplierFormula   String @default("1 + (currentStreak / 100)")
+  streaksMilestones            Int[]  @default([7, 14, 30, 60, 100, 365])
+  
+  // Characters configuration
+  charactersUnlockXpThreshold  Int    @default(100)
+  charactersPurchaseXpCost     Int    @default(50)
+  
+  // Gamification settings
+  gamificationEnabled          Boolean @default(true)
+  gamificationEventMultiplier  Float   @default(1.0)
+  
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+}

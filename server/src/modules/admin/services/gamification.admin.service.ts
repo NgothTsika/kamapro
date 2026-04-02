@@ -438,26 +438,47 @@ export class GamificationAdminService {
    * Get gamification configuration
    */
   async getGamificationConfig() {
-    // This would typically come from a config table or environment
-    // For now, return hardcoded defaults that can be stored in DB later
+    let config = await prisma.gameConfig.findUnique({
+      where: { id: "gamification" },
+    });
+
+    // Create default config if not exists
+    if (!config) {
+      config = await prisma.gameConfig.create({
+        data: {
+          id: "gamification",
+          heartsMaxHearts: 5,
+          heartsRecoveryTimeMs: 3600000,
+          heartsPremiumRecoveryTimeMs: 1800000,
+          streaksCheckInHours: 24,
+          streaksXpMultiplierFormula: "1 + (currentStreak / 100)",
+          streaksMilestones: [7, 14, 30, 60, 100, 365],
+          charactersUnlockXpThreshold: 100,
+          charactersPurchaseXpCost: 50,
+          gamificationEnabled: true,
+          gamificationEventMultiplier: 1.0,
+        },
+      });
+    }
+
     return {
       hearts: {
-        maxHearts: 5,
-        recoveryTimeMs: 3600000, // 1 hour
-        premiumRecoveryTimeMs: 1800000, // 30 minutes
+        maxHearts: config.heartsMaxHearts,
+        recoveryTimeMs: config.heartsRecoveryTimeMs,
+        premiumRecoveryTimeMs: config.heartsPremiumRecoveryTimeMs,
       },
       streaks: {
-        checkInHours: 24,
-        xpMultiplierFormula: "1 + (currentStreak / 100)",
-        milestones: [7, 14, 30, 60, 100, 365],
+        checkInHours: config.streaksCheckInHours,
+        xpMultiplierFormula: config.streaksXpMultiplierFormula,
+        milestones: config.streaksMilestones as number[],
       },
       characters: {
-        unlockXpThreshold: 100,
-        purchaseXpCost: 50,
+        unlockXpThreshold: config.charactersUnlockXpThreshold,
+        purchaseXpCost: config.charactersPurchaseXpCost,
       },
       gamification: {
-        enabled: true,
-        eventMultiplier: 1.0,
+        enabled: config.gamificationEnabled,
+        eventMultiplier: config.gamificationEventMultiplier,
       },
     };
   }
@@ -482,11 +503,110 @@ export class GamificationAdminService {
       }
     }
 
-    // Return updated config (in real implementation, would save to DB)
-    const config = await this.getGamificationConfig();
+    // Get current config first
+    let config = await prisma.gameConfig.findUnique({
+      where: { id: "gamification" },
+    });
+
+    if (!config) {
+      config = await prisma.gameConfig.create({
+        data: {
+          id: "gamification",
+          heartsMaxHearts: 5,
+          heartsRecoveryTimeMs: 3600000,
+          heartsPremiumRecoveryTimeMs: 1800000,
+          streaksCheckInHours: 24,
+          streaksXpMultiplierFormula: "1 + (currentStreak / 100)",
+          streaksMilestones: [7, 14, 30, 60, 100, 365],
+          charactersUnlockXpThreshold: 100,
+          charactersPurchaseXpCost: 50,
+          gamificationEnabled: true,
+          gamificationEventMultiplier: 1.0,
+        },
+      });
+    }
+
+    // Build update data dynamically
+    const updateData: any = {};
+
+    if (newConfig.hearts) {
+      if (newConfig.hearts.maxHearts !== undefined) {
+        updateData.heartsMaxHearts = newConfig.hearts.maxHearts;
+      }
+      if (newConfig.hearts.recoveryTimeMs !== undefined) {
+        updateData.heartsRecoveryTimeMs = newConfig.hearts.recoveryTimeMs;
+      }
+      if (newConfig.hearts.premiumRecoveryTimeMs !== undefined) {
+        updateData.heartsPremiumRecoveryTimeMs =
+          newConfig.hearts.premiumRecoveryTimeMs;
+      }
+    }
+
+    if (newConfig.streaks) {
+      if (newConfig.streaks.checkInHours !== undefined) {
+        updateData.streaksCheckInHours = newConfig.streaks.checkInHours;
+      }
+      if (newConfig.streaks.xpMultiplierFormula !== undefined) {
+        updateData.streaksXpMultiplierFormula =
+          newConfig.streaks.xpMultiplierFormula;
+      }
+      if (newConfig.streaks.milestones !== undefined) {
+        updateData.streaksMilestones = newConfig.streaks.milestones;
+      }
+    }
+
+    if (newConfig.characters) {
+      if (newConfig.characters.unlockXpThreshold !== undefined) {
+        updateData.charactersUnlockXpThreshold =
+          newConfig.characters.unlockXpThreshold;
+      }
+      if (newConfig.characters.purchaseXpCost !== undefined) {
+        updateData.charactersPurchaseXpCost =
+          newConfig.characters.purchaseXpCost;
+      }
+    }
+
+    if (newConfig.gamification) {
+      if (newConfig.gamification.enabled !== undefined) {
+        updateData.gamificationEnabled = newConfig.gamification.enabled;
+      }
+      if (newConfig.gamification.eventMultiplier !== undefined) {
+        updateData.gamificationEventMultiplier =
+          newConfig.gamification.eventMultiplier;
+      }
+    }
+
+    // Update only if there are changes
+    if (Object.keys(updateData).length === 0) {
+      return {
+        message: "No configuration changes provided",
+      };
+    }
+
+    const updated = await prisma.gameConfig.update({
+      where: { id: "gamification" },
+      data: updateData,
+    });
+
     return {
-      ...config,
-      ...newConfig,
+      hearts: {
+        maxHearts: updated.heartsMaxHearts,
+        recoveryTimeMs: updated.heartsRecoveryTimeMs,
+        premiumRecoveryTimeMs: updated.heartsPremiumRecoveryTimeMs,
+      },
+      streaks: {
+        checkInHours: updated.streaksCheckInHours,
+        xpMultiplierFormula: updated.streaksXpMultiplierFormula,
+        milestones: updated.streaksMilestones as number[],
+      },
+      characters: {
+        unlockXpThreshold: updated.charactersUnlockXpThreshold,
+        purchaseXpCost: updated.charactersPurchaseXpCost,
+      },
+      gamification: {
+        enabled: updated.gamificationEnabled,
+        eventMultiplier: updated.gamificationEventMultiplier,
+      },
       message: "Configuration updated successfully",
     };
   }

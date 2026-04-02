@@ -6,6 +6,7 @@ import { User } from "@prisma/client";
 import { env } from "../../config/env";
 import { prisma } from "../../lib/prisma";
 import { HttpError } from "../../lib/errors";
+import { initializeGamificationForNewUser } from "../gamification/gamification.integration";
 
 type OAuthProfile = {
   email: string;
@@ -59,7 +60,7 @@ const upsertSocialUser = async (
   }
 
   const username = await buildUniqueUsername(profile.email);
-  return prisma.user.create({
+  const newUser = await prisma.user.create({
     data: {
       email: profile.email,
       username,
@@ -69,6 +70,11 @@ const upsertSocialUser = async (
       language,
     },
   });
+
+  // Initialize gamification for new user
+  await initializeGamificationForNewUser(newUser.id);
+
+  return newUser;
 };
 
 const createSession = async (userId: string) => {

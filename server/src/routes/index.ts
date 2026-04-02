@@ -16,6 +16,8 @@ import { pushRouter } from "../modules/push/push.controller";
 import { achievementsRouter } from "../modules/achievements/achievements.controller";
 import { usersRouter } from "../modules/users/users.controller";
 import storageRouter from "../modules/storage/storage.controller";
+import gamificationRouter from "../modules/gamification/gamification.controller";
+import { gamificationAdminRouter } from "../modules/admin/controllers/gamification.admin.controller";
 
 export const apiRouter = Router();
 
@@ -36,3 +38,5 @@ apiRouter.use("/push", pushRouter);
 apiRouter.use("/achievements", achievementsRouter);
 apiRouter.use("/users", usersRouter);
 apiRouter.use("/storage", storageRouter);
+apiRouter.use("/gamification", gamificationRouter);
+apiRouter.use("/admin/gamification", gamificationAdminRouter);

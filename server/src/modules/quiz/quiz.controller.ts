@@ -4,6 +4,10 @@ import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/http";
 import { requireAuth } from "../../middleware/auth.middleware";
 import { HttpError } from "../../lib/errors";
+import {
+  onQuizFailure,
+  onQuizSuccess,
+} from "../gamification/gamification.integration";
 
 export const quizRouter = Router();
 
@@ -103,7 +107,7 @@ quizRouter.post(
     const { sessionId } = paramsSchema.parse(req.params);
     const { selectedOption } = answerQuizBodySchema.parse(req.body);
 
-    const payload = await prisma.$transaction(async (tx) => {
+    const transactionResult = await prisma.$transaction(async (tx) => {
       const session = await tx.quizSession.findUnique({
         where: { id: sessionId },
         select: {
@@ -116,8 +120,10 @@ quizRouter.post(
       });
 
       if (!session) throw new HttpError(404, "Session not found");
-      if (session.userId !== req.user!.id) throw new HttpError(403, "Forbidden");
-      if (session.completedAt) throw new HttpError(409, "Session already completed");
+      if (session.userId !== req.user!.id)
+        throw new HttpError(403, "Forbidden");
+      if (session.completedAt)
+        throw new HttpError(409, "Session already completed");
 
       const quiz = await tx.quiz.findUnique({
         where: { id: session.quizId },
@@ -185,10 +191,34 @@ quizRouter.post(
         heartsRemaining: newHearts,
         completedAt,
         passed,
+        isCorrect,
       };
     });
+
+    // Build response with gamification data
+    const payload: any = {
+      attempt: transactionResult.attempt,
+      heartsRemaining: transactionResult.heartsRemaining,
+      completedAt: transactionResult.completedAt,
+      passed: transactionResult.passed,
+    };
+
+    // Trigger gamification integration after transaction completes
+    try {
+      if (transactionResult.isCorrect) {
+        // On success: record activity and award XP bonus
+        const gamificationResult = await onQuizSuccess(req.user!.id, 5);
+        payload.gamification = gamificationResult;
+      } else if (transactionResult.completedAt && !transactionResult.passed) {
+        // On failure: lose heart and get motivational message
+        const gamificationResult = await onQuizFailure(req.user!.id, "quiz");
+        payload.gamification = gamificationResult;
+      }
+    } catch (error) {
+      console.error("Gamification integration error:", error);
+      // Don't fail the response, just log the error
+    }
 
     res.status(200).json(payload);
   }),
 );
-

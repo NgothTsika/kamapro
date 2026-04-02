@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/http";
 import { requireAuth } from "../../middleware/auth.middleware";
 import { HttpError } from "../../lib/errors";
+import { onLessonCompleted } from "../gamification/gamification.integration";
 
 export const progressRouter = Router();
 
@@ -222,6 +223,35 @@ progressRouter.post(
       }
     });
 
+    // Trigger gamification integration (streak, character XP, etc.)
+    if (!alreadyCompleted) {
+      try {
+        // Get user's first collected character for XP allocation
+        const collectedCharacter = await prisma.collectedCharacter.findFirst({
+          where: { userId: req.user!.id },
+          select: { characterId: true },
+        });
+
+        const gamificationResult = await onLessonCompleted(
+          req.user!.id,
+          lessonId,
+          xpEarned,
+          collectedCharacter?.characterId,
+        );
+
+        return res.status(200).json({
+          ok: true,
+          xpEarned,
+          alreadyCompleted,
+          gamification: gamificationResult,
+        });
+      } catch (error) {
+        console.error("Gamification integration error:", error);
+        // Don't fail the response, just log the error
+        return res.status(200).json({ ok: true, xpEarned, alreadyCompleted });
+      }
+    }
+
     res.status(200).json({ ok: true, xpEarned, alreadyCompleted });
   }),
 );
@@ -357,8 +387,6 @@ progressRouter.get(
                 take: 1,
                 select: { name: true, description: true, story: true },
               },
-              category: { select: { id: true, slug: true, name: true } },
-              unlockLesson: { select: { id: true, slug: true } },
             },
           },
           characterCard: true,
@@ -399,8 +427,6 @@ progressRouter.get(
             name: true,
             description: true,
             story: true,
-            category: { select: { id: true, slug: true, name: true } },
-            unlockLesson: { select: { id: true, slug: true } },
           },
         },
         characterCard: true,

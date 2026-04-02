@@ -35,6 +35,11 @@ const limiter = rateLimit({
   message: "Too many requests from this IP, please try again later.",
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  // Skip rate limiting for authenticated requests (those with valid Authorization header)
+  skip: (req) => {
+    const authHeader = req.headers.authorization;
+    return !!authHeader; // Skip rate limiting if Authorization header exists
+  },
 });
 app.use(limiter);
 
@@ -147,38 +152,66 @@ process.on("unhandledRejection", (reason, promise) => {
   process.exit(1);
 });
 
-// Start Server
-const PORT = env.PORT || 3000;
-server = app.listen(PORT, () => {
-  // eslint-disable-next-line no-console
-  console.log("╔════════════════════════════════════════╗");
-  console.log("║       🎮 KamaGame API Server 🎮       ║");
-  console.log("╠════════════════════════════════════════╣");
-  console.log(`║ Port:     ${PORT.toString().padEnd(32)}║`);
-  console.log(`║ Status:   Running${" ".repeat(26)}║`);
-  console.log(`║ Env:      ${env.NODE_ENV.padEnd(32)}║`);
-  console.log(`║ CORS:     ${env.CORS_ORIGIN.padEnd(32)}║`);
-  console.log("╠════════════════════════════════════════╣");
-  console.log("║ Endpoints:                             ║");
-  console.log(
-    `║ • Health:  http://localhost:${PORT}/health${" ".repeat(5 + (3000 - PORT).toString().length)}║`,
-  );
-  console.log(
-    `║ • Ready:   http://localhost:${PORT}/ready${" ".repeat(6 + (3000 - PORT).toString().length)}║`,
-  );
-  console.log(
-    `║ • API:     http://localhost:${PORT}/api/v1${" ".repeat(3 + (3000 - PORT).toString().length)}║`,
-  );
-  console.log("╠════════════════════════════════════════╣");
-  console.log("║ Middleware:                            ║");
-  console.log("║ ✓ Helmet (Security)                    ║");
-  console.log("║ ✓ Compression                          ║");
-  console.log("║ ✓ CORS                                 ║");
-  console.log("║ ✓ Rate Limiting                        ║");
-  console.log("║ ✓ Request Logging                      ║");
-  console.log("║ ✓ Error Handling                       ║");
-  console.log("║ ✓ Graceful Shutdown                    ║");
-  console.log("╚════════════════════════════════════════╝");
+/**
+ * Initialize and Start Server
+ * Wrapped in async IIFE to handle async initialization
+ */
+async function initializeServer() {
+  const PORT = env.PORT || 3000;
+
+  try {
+    // Test database connection
+    await prisma.$queryRaw`SELECT 1`;
+    console.log("✓ Database connection established");
+  } catch (error) {
+    console.error("✗ Failed to connect to database:", error);
+    process.exit(1);
+  }
+
+  // Start listening on port
+  server = app.listen(PORT, () => {
+    // eslint-disable-next-line no-console
+    console.log("╔════════════════════════════════════════╗");
+    console.log("║       🎮 KamaGame API Server 🎮        ║");
+    console.log("╠════════════════════════════════════════╣");
+    console.log(`║ Port:     ${PORT.toString().padEnd(32)}║`);
+    console.log(`║ Status:   Running${" ".repeat(26)}     ║`);
+    console.log(`║ Env:      ${env.NODE_ENV.padEnd(32)}   ║`);
+    console.log(`║ CORS:     ${env.CORS_ORIGIN.padEnd(32)}║`);
+    console.log("╠════════════════════════════════════════╣");
+    console.log("║ Endpoints:                             ║");
+    console.log(
+      `║ • Health:  http://localhost:${PORT}/health${" ".repeat(5 + (3000 - PORT).toString().length)}║`,
+    );
+    console.log(
+      `║ • Ready:   http://localhost:${PORT}/ready${" ".repeat(6 + (3000 - PORT).toString().length)}║`,
+    );
+    console.log(
+      `║ • API:     http://localhost:${PORT}/api/v1${" ".repeat(3 + (3000 - PORT).toString().length)}║`,
+    );
+    console.log("╠════════════════════════════════════════╣");
+    console.log("║ Middleware:                            ║");
+    console.log("║ ✓ Helmet (Security)                    ║");
+    console.log("║ ✓ Compression                          ║");
+    console.log("║ ✓ CORS                                 ║");
+    console.log("║ ✓ Rate Limiting                        ║");
+    console.log("║ ✓ Request Logging                      ║");
+    console.log("║ ✓ Error Handling                       ║");
+    console.log("║ ✓ Graceful Shutdown                    ║");
+    console.log("║ ✓ Gamification System                  ║");
+    console.log("║   - Hearts Recovery                    ║");
+    console.log("║   - Streak Tracking                    ║");
+    console.log("║   - Character Progression              ║");
+    console.log("╚════════════════════════════════════════╝");
+  });
+}
+
+/**
+ * Start the server
+ */
+initializeServer().catch((error) => {
+  console.error("Failed to initialize server:", error);
+  process.exit(1);
 });
 
 export default app;

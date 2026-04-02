@@ -680,9 +680,6 @@ async function main() {
         "A fictional guide that helps players learn African history.",
       story:
         "Kama collects stories, facts, and legends from across the continent.",
-      categories: {
-        connect: [{ id: category.id }],
-      },
       unlockLessonId: lesson.id,
       rarityLevel: "common",
     },
@@ -695,12 +692,16 @@ async function main() {
         "Kama collects stories, facts, and legends from across the continent.",
       imageUrl: null,
       inventionImage: null,
-      categories: {
-        connect: [{ id: category.id }],
-      },
       xpThreshold: null,
       rarityLevel: "common",
       unlockLessonId: lesson.id,
+      categories: {
+        create: [
+          {
+            categoryId: category.id,
+          },
+        ],
+      },
     },
   });
 
@@ -721,6 +722,554 @@ async function main() {
       },
     });
   }
+
+  // ==================== TEST USERS ====================
+  console.log("📝 Creating test users...");
+
+  const testUsers = [
+    {
+      email: "student1@kamagame.com",
+      username: "student1",
+      password: "Student123!",
+      role: "USER",
+    },
+    {
+      email: "student2@kamagame.com",
+      username: "student2",
+      password: "Student123!",
+      role: "USER",
+    },
+    {
+      email: "moderator@kamagame.com",
+      username: "moderator",
+      password: "Moderator123!",
+      role: "MODERATOR",
+    },
+  ];
+
+  for (const testUser of testUsers) {
+    const passwordHash = await bcrypt.hash(testUser.password, 10);
+    await prisma.user.upsert({
+      where: { email: testUser.email },
+      update: {},
+      create: {
+        email: testUser.email,
+        username: testUser.username,
+        passwordHash,
+        role: testUser.role as any,
+        emailVerified: true,
+      },
+    });
+  }
+
+  console.log(`✅ Created ${testUsers.length} test users`);
+
+  // ==================== MORE LESSONS ====================
+  console.log("📚 Creating more lessons...");
+
+  const egyptCategory = await prisma.category.findUnique({
+    where: { slug: "ancient-egypt" },
+  });
+
+  const lessonsData = [
+    {
+      title: "Ancient Egypt: The Nile Civilization",
+      slug: "ancient-egypt-nile",
+      description: "Discover the wonders of Egyptian civilization",
+      content: "# Ancient Egypt\n\nEgypt was built on the Nile River...",
+      hook: "Explore pyramids and pharaohs",
+      xpReward: 25,
+      categoryId: egyptCategory?.id || category.id,
+      topicId: topic.id,
+      published: true,
+    },
+    {
+      title: "Mansa Musa: The Richest Man in History",
+      slug: "mansa-musa-history",
+      description: "The legendary Mali emperor and his pilgrimage",
+      content: "# Mansa Musa\n\nOne of the wealthiest men ever...",
+      hook: "Discover Mali's golden age",
+      xpReward: 30,
+      categoryId: category.id,
+      topicId: topic.id,
+      published: true,
+    },
+    {
+      title: "Hatshepsut: Female Pharaoh",
+      slug: "hatshepsut-pharaoh",
+      description: "One of Egypt's greatest rulers",
+      content: "# Hatshepsut\n\nHatshepsut ruled Egypt with wisdom...",
+      hook: "Learn about a powerful woman leader",
+      xpReward: 25,
+      categoryId: egyptCategory?.id || category.id,
+      topicId: topic.id,
+      published: true,
+    },
+  ];
+
+  const createdLessons = [];
+  for (const lessonData of lessonsData) {
+    const createdLesson = await prisma.lesson.upsert({
+      where: { slug: lessonData.slug },
+      update: {},
+      create: {
+        title: lessonData.title,
+        slug: lessonData.slug,
+        description: lessonData.description,
+        content: lessonData.content,
+        hook: lessonData.hook,
+        xpReward: lessonData.xpReward,
+        categoryId: lessonData.categoryId,
+        topicId: lessonData.topicId,
+        published: lessonData.published,
+      },
+    });
+    createdLessons.push(createdLesson);
+  }
+
+  console.log(`✅ Created ${createdLessons.length} lessons`);
+
+  // ==================== MORE QUIZZES ====================
+  console.log("🎯 Creating more quizzes...");
+
+  for (const lesson of createdLessons) {
+    const existingQuiz = await prisma.quiz.findFirst({
+      where: { lessonId: lesson.id },
+    });
+
+    if (!existingQuiz) {
+      await prisma.quiz.createMany({
+        data: [
+          {
+            lessonId: lesson.id,
+            question: `What was the main achievement of ${lesson.title}?`,
+            type: "multiple_choice",
+            options: [
+              "Cultural advancement",
+              "Military strength",
+              "Trade expansion",
+              "All of the above",
+            ],
+            correctOption: 3,
+            explanation:
+              "This civilization achieved greatness across multiple fronts.",
+            order: 0,
+            heartLimit: 4,
+            difficulty: "medium",
+            isActive: true,
+            tags: ["history", "multiple-choice"],
+            topicId: topic.id,
+          },
+          {
+            lessonId: lesson.id,
+            question: `Is ${lesson.title} still relevant today?`,
+            type: "true_false",
+            options: ["True", "False"],
+            correctOption: 0,
+            explanation:
+              "Yes, these historical lessons continue to inspire us.",
+            order: 1,
+            heartLimit: 3,
+            difficulty: "easy",
+            isActive: true,
+            tags: ["reflection", "true-false"],
+            topicId: topic.id,
+          },
+        ],
+      });
+    }
+  }
+
+  console.log(`✅ Created quizzes for lessons`);
+
+  // ==================== MORE CHARACTERS ====================
+  console.log("🎭 Creating more characters...");
+
+  const charactersData = [
+    {
+      name: "Nefertiti",
+      slug: "nefertiti-queen",
+      description: "Egyptian queen known for her beauty and power",
+      story: "Nefertiti was one of Egypt's most influential queens",
+      entityType: "person",
+      personType: "leader",
+      country: "Egypt",
+      rarityLevel: "rare",
+    },
+    {
+      name: "Haile Selassie",
+      slug: "haile-selassie-emperor",
+      description: "Emperor of Ethiopia and pan-African icon",
+      story: "Haile Selassie modernized Ethiopia and championed African unity",
+      entityType: "person",
+      personType: "leader",
+      country: "Ethiopia",
+      rarityLevel: "rare",
+    },
+    {
+      name: "The Great Zimbabwe",
+      slug: "great-zimbabwe-place",
+      description: "Ancient stone city in southern Africa",
+      story: "Great Zimbabwe was a thriving trade center",
+      entityType: "place",
+      placeType: "monument",
+      country: "Zimbabwe",
+      rarityLevel: "legendary",
+    },
+    {
+      name: "Zumbi dos Palmares",
+      slug: "zumbi-palmares",
+      description: "Leader of Palmares, a free Black settlement in Brazil",
+      story: "Zumbi led resistance against slavery",
+      entityType: "person",
+      personType: "activist",
+      country: "Brazil",
+      rarityLevel: "rare",
+    },
+  ];
+
+  for (const charData of charactersData) {
+    await prisma.character.upsert({
+      where: { slug: charData.slug },
+      update: {},
+      create: {
+        name: charData.name,
+        slug: charData.slug,
+        description: charData.description,
+        story: charData.story,
+        entityType: charData.entityType,
+        personType: charData.personType,
+        placeType: charData.placeType,
+        country: charData.country,
+        rarityLevel: charData.rarityLevel,
+        categories: {
+          create: [
+            {
+              categoryId: category.id,
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  console.log(`✅ Created ${charactersData.length} characters`);
+
+  // ==================== ACHIEVEMENTS ====================
+  console.log("🏆 Creating achievements...");
+
+  const achievementsData = [
+    {
+      name: "First Lesson",
+      description: "Complete your first lesson",
+      xpRequired: 0,
+      streakRequired: null,
+    },
+    {
+      name: "Quiz Master",
+      description: "Complete 10 quizzes",
+      xpRequired: 100,
+      streakRequired: null,
+    },
+    {
+      name: "History Scholar",
+      description: "Earn 500 XP",
+      xpRequired: 500,
+      streakRequired: null,
+    },
+    {
+      name: "Week Warrior",
+      description: "Maintain a 7-day streak",
+      xpRequired: null,
+      streakRequired: 7,
+    },
+    {
+      name: "Legend",
+      description: "Maintain a 30-day streak",
+      xpRequired: null,
+      streakRequired: 30,
+    },
+    {
+      name: "Collector",
+      description: "Collect 5 characters",
+      xpRequired: 250,
+      streakRequired: null,
+    },
+  ];
+
+  const createdAchievements = [];
+  for (const achieveData of achievementsData) {
+    const achievement = await prisma.achievement.create({
+      data: {
+        name: achieveData.name,
+        description: achieveData.description,
+        xpRequired: achieveData.xpRequired,
+        streakRequired: achieveData.streakRequired,
+      },
+    });
+    createdAchievements.push(achievement);
+  }
+
+  console.log(`✅ Created ${createdAchievements.length} achievements`);
+
+  // ==================== GAMIFICATION DATA ====================
+  console.log("💗 Setting up gamification data...");
+
+  const student1 = await prisma.user.findUnique({
+    where: { email: "student1@kamagame.com" },
+  });
+
+  if (student1) {
+    // Create hearts for student1
+    await prisma.userHearts.upsert({
+      where: { userId: student1.id },
+      update: {},
+      create: {
+        userId: student1.id,
+        hearts: 4,
+        maxHearts: 5,
+        lastHeartLossAt: null,
+        lastRecoveredAt: null,
+      },
+    });
+
+    // Create streak for student1
+    await prisma.userStreak.upsert({
+      where: { userId: student1.id },
+      update: {},
+      create: {
+        userId: student1.id,
+        currentStreak: 5,
+        longestStreak: 12,
+        freezesRemaining: 3,
+        lastActivityAt: new Date(),
+      },
+    });
+
+    // Add some streak check-ins
+    const today = new Date();
+    for (let i = 0; i < 5; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      date.setHours(0, 0, 0, 0); // Normalize to start of day
+
+      await prisma.streakCheckIn.upsert({
+        where: {
+          userId_date: {
+            userId: student1.id,
+            date,
+          },
+        },
+        update: {},
+        create: {
+          userId: student1.id,
+          date,
+          xpEarned: 50,
+          lessonCount: 2,
+          quizCount: 3,
+        },
+      });
+    }
+
+    // Create character progress
+    const charToCollect = await prisma.character.findFirst();
+    if (charToCollect) {
+      await prisma.userCharacterProgress.upsert({
+        where: {
+          userId_characterId: {
+            userId: student1.id,
+            characterId: charToCollect.id,
+          },
+        },
+        update: {},
+        create: {
+          userId: student1.id,
+          characterId: charToCollect.id,
+          favoriteLevel: 2,
+          isCollected: true,
+          unlockedAt: new Date(),
+        },
+      });
+    }
+
+    // Award some achievements
+    if (createdAchievements.length > 0) {
+      await prisma.userAchievement.upsert({
+        where: {
+          userId_achievementId: {
+            userId: student1.id,
+            achievementId: createdAchievements[0].id,
+          },
+        },
+        update: {},
+        create: {
+          userId: student1.id,
+          achievementId: createdAchievements[0].id,
+        },
+      });
+    }
+
+    // Add some XP
+    await prisma.user.update({
+      where: { id: student1.id },
+      data: {
+        xp: 250,
+        streak: 5,
+      },
+    });
+  }
+
+  console.log(`✅ Set up gamification data for test user`);
+
+  // ==================== COMPLETED LESSONS ====================
+  console.log("✅ Recording completed lessons...");
+
+  if (student1 && createdLessons.length > 0) {
+    for (let i = 0; i < Math.min(2, createdLessons.length); i++) {
+      await prisma.completedLesson.upsert({
+        where: {
+          userId_lessonId: {
+            userId: student1.id,
+            lessonId: createdLessons[i].id,
+          },
+        },
+        update: {},
+        create: {
+          userId: student1.id,
+          lessonId: createdLessons[i].id,
+          xpEarned: 25,
+        },
+      });
+    }
+  }
+
+  console.log(`✅ Recorded completed lessons`);
+
+  // ==================== POLL DATA ====================
+  console.log("📊 Creating poll quizzes...");
+
+  const pollQuiz = await prisma.quiz.create({
+    data: {
+      lessonId: lesson.id,
+      question: "What aspect of African history interests you most?",
+      type: "poll",
+      isPoll: true,
+      pollDescription: "Help us understand your interests",
+      options: [
+        "Ancient Civilizations",
+        "Modern History",
+        "Culture & Arts",
+        "Science & Technology",
+      ],
+      correctOption: null,
+      order: 5,
+      heartLimit: 0,
+      difficulty: "easy",
+      isActive: true,
+      tags: ["poll", "feedback"],
+      topicId: topic.id,
+      pollResults: { "0": 12, "1": 8, "2": 15, "3": 5 },
+      totalPollVotes: 40,
+    },
+  });
+
+  console.log(`✅ Created poll quiz`);
+
+  // ==================== BOOKMARKS ====================
+  console.log("📌 Creating bookmarks...");
+
+  if (student1 && createdLessons.length > 0) {
+    await prisma.bookmark.upsert({
+      where: {
+        userId_lessonId: {
+          userId: student1.id,
+          lessonId: createdLessons[0].id,
+        },
+      },
+      update: {},
+      create: {
+        userId: student1.id,
+        lessonId: createdLessons[0].id,
+      },
+    });
+  }
+
+  console.log(`✅ Created bookmarks`);
+
+  // ==================== DAILY CHALLENGES ====================
+  console.log("🎯 Creating daily challenges...");
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const challenges = [
+    {
+      title: "Complete 3 Lessons",
+      description: "Finish 3 lessons today to earn bonus XP",
+      targetCount: 3,
+      rewardXp: 100,
+    },
+    {
+      title: "Pass 5 Quizzes",
+      description: "Score 100% on 5 quizzes",
+      targetCount: 5,
+      rewardXp: 150,
+    },
+    {
+      title: "Maintain Streak",
+      description: "Keep your learning streak alive",
+      targetCount: 1,
+      rewardXp: 50,
+    },
+    {
+      title: "Explore New Category",
+      description: "Learn from a new lesson category",
+      targetCount: 1,
+      rewardXp: 75,
+    },
+  ];
+
+  for (const challengeData of challenges) {
+    await prisma.dailyChallenge.create({
+      data: {
+        title: challengeData.title,
+        description: challengeData.description,
+        challengeType: "lessons_completed",
+        targetCount: challengeData.targetCount,
+        xpReward: challengeData.rewardXp,
+        active: true,
+        startDate: today,
+        endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+      },
+    });
+  }
+
+  console.log(`✅ Created ${challenges.length} daily challenges`);
+
+  // ==================== GAMING CONFIG ====================
+  console.log("⚙️ Setting up gamification configuration...");
+
+  await prisma.gameConfig.upsert({
+    where: { id: "gamification" },
+    update: {},
+    create: {
+      id: "gamification",
+      heartsMaxHearts: 5,
+      heartsRecoveryTimeMs: 3600000,
+      heartsPremiumRecoveryTimeMs: 1800000,
+      streaksCheckInHours: 24,
+      streaksXpMultiplierFormula: "1 + (currentStreak / 100)",
+      streaksMilestones: [7, 14, 30, 60, 100, 365],
+      charactersUnlockXpThreshold: 100,
+      charactersPurchaseXpCost: 50,
+      gamificationEnabled: true,
+      gamificationEventMultiplier: 1.0,
+    },
+  });
+
+  console.log(`✅ Configured gamification system`);
+
+  console.log("✨ Seed completed successfully!");
 }
 
 main()

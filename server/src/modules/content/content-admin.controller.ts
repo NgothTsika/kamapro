@@ -321,8 +321,7 @@ contentAdminRouter.patch(
         slug: slug ?? undefined,
         description:
           body.description === undefined ? undefined : body.description,
-        coverImage:
-          body.coverImage === undefined ? undefined : body.coverImage,
+        coverImage: body.coverImage === undefined ? undefined : body.coverImage,
         parentId: body.parentId === undefined ? undefined : body.parentId,
       },
     });
@@ -827,6 +826,62 @@ contentAdminRouter.post(
     });
 
     res.status(201).json({ quiz });
+  }),
+);
+
+// GET /api/v1/content/admin/lessons/:lessonId/quizzes
+// Get all quizzes for a specific lesson (admin)
+contentAdminRouter.get(
+  "/admin/lessons/:lessonId/quizzes",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ lessonId: z.string().min(1) });
+    const { lessonId } = paramsSchema.parse(req.params);
+
+    // Verify lesson exists
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      select: { id: true },
+    });
+    if (!lesson) throw new HttpError(404, "Lesson not found");
+
+    const quizzes = await prisma.quiz.findMany({
+      where: { lessonId },
+      orderBy: { order: "asc" },
+    });
+
+    // Transform quizzes to ensure proper JSON serialization
+    const transformedQuizzes = quizzes.map((quiz) => ({
+      id: quiz.id,
+      lessonId: quiz.lessonId,
+      question: quiz.question,
+      type: quiz.type,
+      options: Array.isArray(quiz.options)
+        ? quiz.options
+        : (quiz.options as unknown as string[] | null) || [],
+      optionImages: Array.isArray(quiz.optionImages)
+        ? quiz.optionImages
+        : (quiz.optionImages as unknown as string[] | null) || null,
+      correctOption: quiz.correctOption,
+      explanation: quiz.explanation,
+      order: quiz.order,
+      heartLimit: quiz.heartLimit,
+      timeLimitSeconds: quiz.timeLimitSeconds,
+      difficulty: quiz.difficulty,
+      isActive: quiz.isActive,
+      tags: quiz.tags,
+      topicId: quiz.topicId,
+      questionAudioUrl: quiz.questionAudioUrl,
+      isPoll: quiz.isPoll,
+      pollDescription: quiz.pollDescription,
+      pollResults: quiz.pollResults,
+      totalPollVotes: quiz.totalPollVotes,
+      createdAt: quiz.createdAt.toISOString(),
+      updatedAt: quiz.updatedAt.toISOString(),
+    }));
+
+    res.status(200).json({ quizzes: transformedQuizzes });
   }),
 );
 

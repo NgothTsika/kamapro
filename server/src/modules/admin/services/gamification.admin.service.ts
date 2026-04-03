@@ -11,6 +11,10 @@ export class GamificationAdminService {
     sortBy: "hearts" | "lastLoss" | "recovery" = "hearts",
     order: "asc" | "desc" = "desc",
   ) {
+    // Fetch current gamification config
+    const config = await this.getGamificationConfig();
+    const configuredMaxHearts = config.hearts.maxHearts;
+
     const validSortFields = {
       hearts: "hearts",
       lastLoss: "lastHeartLossAt",
@@ -41,11 +45,13 @@ export class GamificationAdminService {
     return {
       data: hearts.map((h) => ({
         ...h,
+        configuredMaxHearts,
         nextRecoveryAt: this.calculateNextRecoveryTime(h),
       })),
       total,
       limit,
       offset,
+      configuredMaxHearts,
     };
   }
 
@@ -53,6 +59,10 @@ export class GamificationAdminService {
    * Get heart system statistics
    */
   async getHeartStats() {
+    // Fetch current gamification config
+    const config = await this.getGamificationConfig();
+    const configuredMaxHearts = config.hearts.maxHearts;
+
     const hearts = await prisma.userHearts.findMany();
     const events = await prisma.heartRecoveryEvent.findMany();
 
@@ -79,8 +89,10 @@ export class GamificationAdminService {
       totalHeartLosses: events.length,
       heartsRecovered: events.reduce((sum, e) => sum + e.heartsRecovered, 0),
       avgRecoveryTimeMs: Math.round(avgRecoveryTime),
-      usersWithFullHearts: hearts.filter((h) => h.hearts === h.maxHearts)
-        .length,
+      configuredMaxHearts,
+      usersWithFullHearts: hearts.filter(
+        (h) => h.hearts === configuredMaxHearts,
+      ).length,
       usersWithNoHearts: hearts.filter((h) => h.hearts === 0).length,
     };
   }
@@ -127,9 +139,13 @@ export class GamificationAdminService {
       throw new HttpError(404, "User hearts record not found");
     }
 
+    // Fetch current gamification config for configured max hearts
+    const config = await this.getGamificationConfig();
+    const configuredMaxHearts = config.hearts.maxHearts;
+
     const newHearts = Math.min(
       userHearts.hearts + heartsToRestore,
-      userHearts.maxHearts,
+      configuredMaxHearts,
     );
 
     const actualRestored = newHearts - userHearts.hearts;
@@ -707,17 +723,33 @@ export class GamificationAdminService {
    * Bulk restore hearts for all users
    */
   async bulkRestoreHearts(heartsPerUser: number = 5) {
-    const result = await prisma.userHearts.updateMany({
-      data: {
-        hearts: heartsPerUser,
-        lastHeartLossAt: null,
-      },
-    });
+    // Fetch current gamification config
+    const config = await this.getGamificationConfig();
+    const configuredMaxHearts = config.hearts.maxHearts;
+
+    // Use configured max hearts as the ceiling
+    const maxHeartsToRestore = Math.min(heartsPerUser, configuredMaxHearts);
+
+    // Get all users and restore their hearts to the configured max
+    const allUsers = await prisma.userHearts.findMany();
+
+    const updates = await Promise.all(
+      allUsers.map((user) =>
+        prisma.userHearts.update({
+          where: { userId: user.userId },
+          data: {
+            hearts: maxHeartsToRestore,
+            lastHeartLossAt: null,
+          },
+        }),
+      ),
+    );
 
     return {
-      usersUpdated: result.count,
-      heartsPerUser,
-      message: `Restored ${heartsPerUser} hearts for ${result.count} users`,
+      usersUpdated: updates.length,
+      heartsRestored: maxHeartsToRestore,
+      configuredMaxHearts,
+      message: `Restored all users to ${maxHeartsToRestore} hearts`,
     };
   }
 
@@ -758,6 +790,49 @@ export class GamificationAdminService {
   }
 
   /**
+   * Sync all users' hearts with current gamification settings
+   * Updates maxHearts and recoveryTimeMs for all users to match configured values
+   */
+  async syncAllUsersHeartsWithConfig() {
+    const config = await this.getGamificationConfig();
+    const configuredMaxHearts = config.hearts.maxHearts;
+    const configuredRecoveryTimeMs = config.hearts.recoveryTimeMs;
+
+    // Update all users' heart settings
+    const result = await prisma.userHearts.updateMany({
+      data: {
+        maxHearts: configuredMaxHearts,
+        recoveryTimeMs: configuredRecoveryTimeMs,
+      },
+    });
+
+    // For users with hearts > configured max, reduce their hearts to max
+    const usersWithExcessHearts = await prisma.userHearts.findMany({
+      where: {
+        hearts: {
+          gt: configuredMaxHearts,
+        },
+      },
+    });
+
+    for (const user of usersWithExcessHearts) {
+      await prisma.userHearts.update({
+        where: { userId: user.userId },
+        data: { hearts: configuredMaxHearts },
+      });
+    }
+
+    return {
+      message:
+        "Successfully synced all users' hearts with gamification settings",
+      configuredMaxHearts,
+      configuredRecoveryTimeMs,
+      totalUsersUpdated: result.count,
+      usersWithExcessHeartsReduced: usersWithExcessHearts.length,
+    };
+  }
+
+  /**
    * Private helper to calculate next recovery time
    */
   private calculateNextRecoveryTime(userHearts: any) {
@@ -769,7 +844,8 @@ export class GamificationAdminService {
       return new Date();
     }
 
-    const recoveryTimeMs = 3600000; // 1 hour
+    // Use the user's configured recovery time from the database
+    const recoveryTimeMs = userHearts.recoveryTimeMs || 3600000; // Default to 1 hour if not set
     return new Date(userHearts.lastHeartLossAt.getTime() + recoveryTimeMs);
   }
 }

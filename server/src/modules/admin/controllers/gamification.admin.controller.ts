@@ -136,6 +136,21 @@ gamificationAdminRouter.post(
   }),
 );
 
+/**
+ * POST /api/v1/admin/gamification/hearts/sync
+ * Sync all users' hearts with current gamification settings
+ */
+gamificationAdminRouter.post(
+  "/hearts/sync",
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const result =
+      await gamificationAdminService.syncAllUsersHeartsWithConfig();
+    res.status(200).json(result);
+  }),
+);
+
 // ============================================================================
 // STREAKS ENDPOINTS
 // ============================================================================

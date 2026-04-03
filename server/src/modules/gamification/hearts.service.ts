@@ -50,14 +50,41 @@ export async function getUserHearts(userId: string): Promise<UserHeartsState> {
 
 /**
  * Initialize hearts for a new user
+ * Uses the configured max hearts from gamification settings
  */
 export async function initializeUserHearts(userId: string) {
+  // Fetch gamification config for configured max hearts
+  let config = await prisma.gameConfig.findUnique({
+    where: { id: "gamification" },
+  });
+
+  // Create default config if not exists
+  if (!config) {
+    config = await prisma.gameConfig.create({
+      data: {
+        id: "gamification",
+        heartsMaxHearts: 3,
+        heartsRecoveryTimeMs: 3600000,
+        heartsPremiumRecoveryTimeMs: 1800000,
+        streaksCheckInHours: 24,
+        streaksXpMultiplierFormula: "1 + (currentStreak / 100)",
+        streaksMilestones: [7, 14, 30, 60, 100, 365],
+        charactersUnlockXpThreshold: 100,
+        charactersPurchaseXpCost: 50,
+        gamificationEnabled: true,
+        gamificationEventMultiplier: 1.0,
+      },
+    });
+  }
+
+  const configuredMaxHearts = config.heartsMaxHearts;
+
   return await prisma.userHearts.create({
     data: {
       userId,
-      hearts: 5,
-      maxHearts: 5,
-      recoveryTimeMs: 3600000, // 1 hour default
+      hearts: configuredMaxHearts,
+      maxHearts: configuredMaxHearts,
+      recoveryTimeMs: config.heartsRecoveryTimeMs,
     },
   });
 }

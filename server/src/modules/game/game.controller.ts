@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/http";
 import { requireAuth } from "../../middleware/auth.middleware";
 import { HttpError } from "../../lib/errors";
+import { loseHeart } from "../gamification/hearts.service";
 
 export const gameRouter = Router();
 
@@ -21,6 +22,22 @@ gameRouter.post(
     const body = createMatchBodySchema.parse(req.body);
     const { quizPool, topicId } = body;
 
+    // Fetch user's current hearts from gamification system
+    const userHearts = await prisma.userHearts.findUnique({
+      where: { userId: req.user!.id },
+    });
+
+    if (!userHearts) {
+      throw new HttpError(400, "User hearts not initialized");
+    }
+
+    if (userHearts.hearts <= 0) {
+      throw new HttpError(
+        400,
+        "You have no hearts left. Please recover hearts first.",
+      );
+    }
+
     const match = await prisma.gameMatch.create({
       data: {
         player1Id: req.user!.id,
@@ -31,8 +48,8 @@ gameRouter.post(
         quizPool: quizPool.length <= 100 ? quizPool : quizPool.slice(0, 100),
         maxRounds: body.maxRounds ?? 5,
         playerCount: 2,
-        heartsPlayer1: 3,
-        heartsPlayer2: 3,
+        heartsPlayer1: userHearts.hearts,
+        heartsPlayer2: 0, // Player 2 will join and have their hearts set
       },
     });
 
@@ -72,10 +89,29 @@ gameRouter.post(
       throw new HttpError(400, "Match is already full");
     }
 
-    // Assign player2
+    // Fetch player 2's hearts from gamification system
+    const player2Hearts = await prisma.userHearts.findUnique({
+      where: { userId: req.user!.id },
+    });
+
+    if (!player2Hearts) {
+      throw new HttpError(400, "Your hearts not initialized");
+    }
+
+    if (player2Hearts.hearts <= 0) {
+      throw new HttpError(
+        400,
+        "You have no hearts left. Please recover hearts first.",
+      );
+    }
+
+    // Assign player2 and set their hearts
     const updated = await prisma.gameMatch.update({
       where: { id: match.id },
-      data: { player2Id: req.user!.id },
+      data: {
+        player2Id: req.user!.id,
+        heartsPlayer2: player2Hearts.hearts,
+      },
       include: {
         player1: { select: { id: true, username: true } },
         player2: { select: { id: true, username: true } },
@@ -321,6 +357,11 @@ gameRouter.post(
           heartsPlayer2,
         },
       });
+
+      // Sync with gamification: lose a heart from the gamification system if incorrect
+      if (!correct) {
+        await loseHeart(req.user!.id, "quiz_failure_in_match");
+      }
 
       // Award XP and leaderboard total for correct answers.
       if (correct) {

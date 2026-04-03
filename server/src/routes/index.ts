@@ -18,6 +18,8 @@ import { usersRouter } from "../modules/users/users.controller";
 import storageRouter from "../modules/storage/storage.controller";
 import gamificationRouter from "../modules/gamification/gamification.controller";
 import { gamificationAdminRouter } from "../modules/admin/controllers/gamification.admin.controller";
+import { feedbackAdminRouter } from "../modules/admin/controllers/feedback.admin.controller";
+import { moderationAdminRouter } from "../modules/admin/controllers/moderation.admin.controller";
 
 export const apiRouter = Router();
 
@@ -40,3 +42,5 @@ apiRouter.use("/users", usersRouter);
 apiRouter.use("/storage", storageRouter);
 apiRouter.use("/gamification", gamificationRouter);
 apiRouter.use("/admin/gamification", gamificationAdminRouter);
+apiRouter.use("/admin/feedback", feedbackAdminRouter);
+apiRouter.use("/admin/moderation", moderationAdminRouter);

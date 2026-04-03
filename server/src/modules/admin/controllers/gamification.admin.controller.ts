@@ -368,6 +368,19 @@ gamificationAdminRouter.put(
 );
 
 /**
+ * GET /api/v1/admin/gamification/events
+ */
+gamificationAdminRouter.get(
+  "/events",
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const events = await gamificationAdminService.getAllGameEvents();
+    res.status(200).json(events);
+  }),
+);
+
+/**
  * POST /api/v1/admin/gamification/events
  */
 gamificationAdminRouter.post(
@@ -392,5 +405,24 @@ gamificationAdminRouter.post(
     );
 
     res.status(201).json(event);
+  }),
+);
+
+/**
+ * DELETE /api/v1/admin/gamification/events/:eventId
+ */
+gamificationAdminRouter.delete(
+  "/events/:eventId",
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const eventId = req.params.eventId as string | string[];
+    const finalEventId = Array.isArray(eventId) ? eventId[0] : eventId;
+
+    const event = await gamificationAdminService.deleteGameEvent(finalEventId);
+    res.status(200).json({
+      message: "Event deleted successfully",
+      event,
+    });
   }),
 );

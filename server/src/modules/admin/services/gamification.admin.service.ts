@@ -447,7 +447,7 @@ export class GamificationAdminService {
       config = await prisma.gameConfig.create({
         data: {
           id: "gamification",
-          heartsMaxHearts: 5,
+          heartsMaxHearts: 4,
           heartsRecoveryTimeMs: 3600000,
           heartsPremiumRecoveryTimeMs: 1800000,
           streaksCheckInHours: 24,
@@ -619,6 +619,7 @@ export class GamificationAdminService {
     multiplier: number,
     durationHours: number,
     affectedSystem: "hearts" | "xp" | "all",
+    description?: string,
   ) {
     if (multiplier < 0.5 || multiplier > 10) {
       throw new HttpError(400, "Multiplier must be between 0.5 and 10");
@@ -628,15 +629,33 @@ export class GamificationAdminService {
       throw new HttpError(400, "Duration must be between 1 hour and 30 days");
     }
 
-    return {
-      eventId: `event_${Date.now()}`,
-      eventName,
-      multiplier,
-      affectedSystem,
-      startsAt: new Date(),
-      endsAt: new Date(Date.now() + durationHours * 60 * 60 * 1000),
-      message: `Event "${eventName}" created with ${multiplier}x multiplier for ${durationHours} hours`,
-    };
+    // Check if event name already exists
+    const existingEvent = await prisma.gameEvent.findUnique({
+      where: { eventName },
+    });
+
+    if (existingEvent) {
+      throw new HttpError(409, `Event "${eventName}" already exists`);
+    }
+
+    const startsAt = new Date();
+    const endsAt = new Date(
+      startsAt.getTime() + durationHours * 60 * 60 * 1000,
+    );
+
+    return await prisma.gameEvent.create({
+      data: {
+        eventName,
+        description:
+          description || `${multiplier}x multiplier for ${affectedSystem}`,
+        multiplier,
+        durationHours,
+        affectedSystem,
+        startsAt,
+        endsAt,
+        isActive: true,
+      },
+    });
   }
 
   /**
@@ -700,6 +719,42 @@ export class GamificationAdminService {
       heartsPerUser,
       message: `Restored ${heartsPerUser} hearts for ${result.count} users`,
     };
+  }
+
+  /**
+   * Get all active game events (non-expired)
+   */
+  async getAllGameEvents() {
+    const now = new Date();
+    return await prisma.gameEvent.findMany({
+      where: {
+        isActive: true,
+        endsAt: {
+          gt: now, // Only show events that haven't expired yet
+        },
+      },
+      orderBy: {
+        startsAt: "desc",
+      },
+    });
+  }
+
+  /**
+   * Delete/deactivate a game event
+   */
+  async deleteGameEvent(eventId: string) {
+    const event = await prisma.gameEvent.findUnique({
+      where: { id: eventId },
+    });
+
+    if (!event) {
+      throw new HttpError(404, "Game event not found");
+    }
+
+    return await prisma.gameEvent.update({
+      where: { id: eventId },
+      data: { isActive: false },
+    });
   }
 
   /**

@@ -8,6 +8,8 @@ import { HttpError } from "../../lib/errors";
 
 export const usersRouter = Router();
 
+// ==================== /me Routes ====================
+
 usersRouter.get(
   "/me",
   requireAuth,
@@ -28,30 +30,6 @@ usersRouter.get(
       },
     });
 
-    res.status(200).json({ user });
-  }),
-);
-
-usersRouter.get(
-  "/:userId",
-  asyncHandler(async (req, res) => {
-    const paramsSchema = z.object({ userId: z.string().min(1) });
-    const { userId } = paramsSchema.parse(req.params);
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        username: true,
-        avatar: true,
-        language: true,
-        xp: true,
-        streak: true,
-        createdAt: true,
-      },
-    });
-
-    if (!user) throw new HttpError(404, "User not found");
     res.status(200).json({ user });
   }),
 );
@@ -97,7 +75,7 @@ usersRouter.get(
   }),
 );
 
-// ==================== Admin Routes ====================
+// ==================== Admin Routes (MUST come before /:userId) ====================
 
 usersRouter.get(
   "/admin",
@@ -191,5 +169,31 @@ usersRouter.delete(
     });
 
     res.status(204).send();
+  }),
+);
+
+// ==================== Generic Routes (/:userId must come LAST) ====================
+
+usersRouter.get(
+  "/:userId",
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ userId: z.string().min(1) });
+    const { userId } = paramsSchema.parse(req.params);
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        username: true,
+        avatar: true,
+        language: true,
+        xp: true,
+        streak: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) throw new HttpError(404, "User not found");
+    res.status(200).json({ user });
   }),
 );

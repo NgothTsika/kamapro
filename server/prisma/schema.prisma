@@ -555,6 +555,26 @@ model UserAchievement {
   @@unique([userId, achievementId])
 }
 
+// ---------- Special Events (Temporary Multipliers) ----------
+model GameEvent {
+  id              String   @id @default(cuid())
+  eventName       String   @unique
+  description     String?
+  multiplier      Float // e.g., 2.0 for 2x, 1.5 for 1.5x
+  durationHours   Int // How long the event lasts
+  affectedSystem  String // "hearts", "xp", or "all"
+  isActive        Boolean  @default(true)
+  
+  startsAt        DateTime @default(now())
+  endsAt          DateTime // Calculated as startsAt + (durationHours * 60 * 60 * 1000)ms
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([isActive])
+  @@index([endsAt])
+}
+
 // ---------- Feedback & Rating System ----------
 model LessonFeedback {
   id        String   @id @default(cuid())

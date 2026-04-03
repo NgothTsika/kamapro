@@ -851,18 +851,45 @@ contentAdminRouter.get(
       orderBy: { order: "asc" },
     });
 
+    // Helper to safely parse JSON fields
+    const safeJsonArray = (value: unknown): string[] => {
+      if (Array.isArray(value)) return value as string[];
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    };
+
+    const safeJsonObject = (value: unknown): Record<string, number> | null => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === "object" && !Array.isArray(value))
+        return value as Record<string, number>;
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          return typeof parsed === "object" ? parsed : null;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+
     // Transform quizzes to ensure proper JSON serialization
     const transformedQuizzes = quizzes.map((quiz) => ({
       id: quiz.id,
       lessonId: quiz.lessonId,
       question: quiz.question,
       type: quiz.type,
-      options: Array.isArray(quiz.options)
-        ? quiz.options
-        : (quiz.options as unknown as string[] | null) || [],
+      options: safeJsonArray(quiz.options),
       optionImages: Array.isArray(quiz.optionImages)
         ? quiz.optionImages
-        : (quiz.optionImages as unknown as string[] | null) || null,
+        : safeJsonArray(quiz.optionImages),
       correctOption: quiz.correctOption,
       explanation: quiz.explanation,
       order: quiz.order,
@@ -875,7 +902,7 @@ contentAdminRouter.get(
       questionAudioUrl: quiz.questionAudioUrl,
       isPoll: quiz.isPoll,
       pollDescription: quiz.pollDescription,
-      pollResults: quiz.pollResults,
+      pollResults: safeJsonObject(quiz.pollResults),
       totalPollVotes: quiz.totalPollVotes,
       createdAt: quiz.createdAt.toISOString(),
       updatedAt: quiz.updatedAt.toISOString(),

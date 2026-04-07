@@ -94,7 +94,10 @@ const createSession = async (userId: string) => {
   return session;
 };
 
-export const loginWithGoogle = async (idToken: string, language?: string) => {
+export const loginWithGoogle = async (
+  idToken: string,
+  language?: string,
+): Promise<{ user: User; session: { token: string; expiresAt: Date } }> => {
   if (!googleClient) {
     throw new HttpError(500, "Google auth is not configured on the server");
   }
@@ -117,7 +120,10 @@ export const loginWithGoogle = async (idToken: string, language?: string) => {
   return { user, session };
 };
 
-export const loginWithApple = async (idToken: string, language?: string) => {
+export const loginWithApple = async (
+  idToken: string,
+  language?: string,
+): Promise<{ user: User; session: { token: string; expiresAt: Date } }> => {
   if (!env.APPLE_CLIENT_ID) {
     throw new HttpError(500, "Apple auth is not configured on the server");
   }
@@ -142,7 +148,7 @@ export const loginWithEmail = async (
   email: string,
   password: string,
   language?: string,
-) => {
+): Promise<{ user: User; session: { token: string; expiresAt: Date } }> => {
   const user = await prisma.user.findUnique({
     where: { email },
   });
@@ -158,14 +164,48 @@ export const loginWithEmail = async (
 
   const session = await createSession(user.id);
 
-  return {
-    user: {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      avatar: user.avatar,
-      language: user.language,
+  return { user, session };
+};
+
+export const registerWithEmail = async (
+  username: string,
+  email: string,
+  password: string,
+  language?: string,
+): Promise<{ user: User; session: { token: string; expiresAt: Date } }> => {
+  // Check if user already exists
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      OR: [{ email }, { username }],
     },
-    session,
-  };
+  });
+
+  if (existingUser) {
+    if (existingUser.email === email) {
+      throw new HttpError(400, "Email already registered");
+    }
+    throw new HttpError(400, "Username already taken");
+  }
+
+  // Hash password
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  // Create user
+  const user = await prisma.user.create({
+    data: {
+      email,
+      username,
+      passwordHash,
+      language: language || "en",
+      avatar: null,
+    },
+  });
+
+  // Initialize gamification for new user
+  await initializeGamificationForNewUser(user.id);
+
+  // Create session
+  const session = await createSession(user.id);
+
+  return { user, session };
 };

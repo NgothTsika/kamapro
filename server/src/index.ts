@@ -94,7 +94,7 @@ app.get("/ready", (_req, res) => {
 });
 
 // API Routes
-app.use("/api/v1", apiRouter);
+app.use("/", apiRouter);
 
 // 404 Handler
 app.use(notFoundHandler);
@@ -187,7 +187,7 @@ async function initializeServer() {
       `║ • Ready:   http://localhost:${PORT}/ready${" ".repeat(6 + (3000 - PORT).toString().length)}║`,
     );
     console.log(
-      `║ • API:     http://localhost:${PORT}/api/v1${" ".repeat(3 + (3000 - PORT).toString().length)}║`,
+      `║ • API:     http://localhost:${PORT}${" ".repeat(13 + (3000 - PORT).toString().length)}║`,
     );
     console.log("╠════════════════════════════════════════╣");
     console.log("║ Middleware:                            ║");

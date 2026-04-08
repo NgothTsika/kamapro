@@ -18,8 +18,7 @@ export async function POST(request: NextRequest) {
   try {
     // Get the backend URL from environment (already includes /api/v1)
     const backendUrl =
-      process.env.NEXT_PUBLIC_API_URL ||
-      "https://kamapro-one.vercel.app/api/v1";
+      process.env.NEXT_PUBLIC_API_URL || "https://kama-api.vercel.app/api/v1";
     const fullUrl = `${backendUrl}/storage/upload`;
 
     // Copy headers from the original request

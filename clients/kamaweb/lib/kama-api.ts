@@ -38,7 +38,7 @@ import type {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "https://kamapro-one.vercel.app/api/v1";
+  "https://kama-api.vercel.app/api/v1";
 
 type ApiOptions = {
   token?: string;

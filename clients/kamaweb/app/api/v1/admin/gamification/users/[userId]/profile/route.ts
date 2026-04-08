@@ -5,7 +5,7 @@ const BACKEND_URL =
     ? process.env.API_URL_LOCAL || "http://localhost:4000"
     : process.env.NEXT_PUBLIC_API_URL ||
       process.env.API_URL_DEPLOYED ||
-      "https://kamapro-one.vercel.app/api/v1";
+      "https://kama-api.vercel.app/api/v1";
 
 export async function GET(
   request: NextRequest,

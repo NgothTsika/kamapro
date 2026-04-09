@@ -42,7 +42,13 @@ function useNormalizedQuiz(quiz: LessonQuizQuestion | undefined) {
       type === "image_choice"
         ? normalizeOptionImages(quiz.optionImages, labels.length)
         : labels.map(() => null as string | null);
-    return { type, labels, images, isPoll, pollDescription: quiz.pollDescription };
+    return {
+      type,
+      labels,
+      images,
+      isPoll,
+      pollDescription: quiz.pollDescription,
+    };
   }, [quiz]);
 }
 
@@ -111,14 +117,21 @@ export default function LessonFlowScreen() {
 
   if (!lesson) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#0e0a06", alignItems: "center", justifyContent: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#0e0a06",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <Text style={{ color: "white" }}>Loading lesson...</Text>
       </View>
     );
   }
 
   async function finishAllQuizzes() {
-    if (!token) return;
+    if (!token || !lesson) return;
     try {
       const res = await completeLesson(token, lesson.id);
       const streakRes = await getStreak(token);
@@ -134,6 +147,7 @@ export default function LessonFlowScreen() {
   }
 
   function advanceQuizAfterCorrect() {
+    if (!lesson) return;
     const next = quizIndex + 1;
     if (next >= lesson.quizzes.length) {
       void finishAllQuizzes();
@@ -146,7 +160,8 @@ export default function LessonFlowScreen() {
   }
 
   async function submitQuizAnswer() {
-    if (!token || selectedOption === null || !currentQuiz || !normalized) return;
+    if (!token || selectedOption === null || !currentQuiz || !normalized)
+      return;
 
     if (normalized.isPoll) {
       try {
@@ -218,6 +233,7 @@ export default function LessonFlowScreen() {
   }
 
   function onResultModalContinue() {
+    if (!lesson) return;
     const { variant } = resultModal;
     setResultModal((m) => ({ ...m, visible: false }));
 
@@ -246,7 +262,7 @@ export default function LessonFlowScreen() {
   }
 
   async function submitFeedback() {
-    if (!token) return;
+    if (!token || !lesson) return;
     try {
       await submitLessonFeedback({
         token,
@@ -261,6 +277,7 @@ export default function LessonFlowScreen() {
   }
 
   function goNextRead() {
+    if (!lesson) return;
     if (chapterIndex < readCardCount - 1) {
       setChapterIndex((v) => v + 1);
       return;
@@ -300,27 +317,48 @@ export default function LessonFlowScreen() {
           onContinue={() => setStage("feedback")}
         />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 20, paddingBottom: 40 }}>
+        <ScrollView
+          contentContainerStyle={{
+            padding: 16,
+            paddingTop: 20,
+            paddingBottom: 40,
+          }}
+        >
           {stage === "intro" ? (
             <View style={{ gap: 12 }}>
-              <Text style={{ color: "#f8d568", fontWeight: "700" }}>Lesson Intro</Text>
-              <Text style={{ color: "white", fontSize: 28, fontWeight: "700" }}>{lesson.title}</Text>
+              <Text style={{ color: "#f8d568", fontWeight: "700" }}>
+                Lesson Intro
+              </Text>
+              <Text style={{ color: "white", fontSize: 28, fontWeight: "700" }}>
+                {lesson.title}
+              </Text>
               <Text style={{ color: "#d0c2b0" }}>
-                {lesson.hook || lesson.description || "Prepare for this wisdom quest."}
+                {lesson.hook ||
+                  lesson.description ||
+                  "Prepare for this wisdom quest."}
               </Text>
               <AnimatedLessonProgressBar value={0.15} />
               <Pressable
                 onPress={() => setStage("read")}
-                style={{ backgroundColor: "#f8d568", borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+                style={{
+                  backgroundColor: "#f8d568",
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                }}
               >
-                <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>Start Lesson</Text>
+                <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>
+                  Start Lesson
+                </Text>
               </Pressable>
             </View>
           ) : null}
 
           {stage === "read" ? (
             <View style={{ gap: 12 }}>
-              <Text style={{ color: "white", fontSize: 22, fontWeight: "700" }}>Reading</Text>
+              <Text style={{ color: "white", fontSize: 22, fontWeight: "700" }}>
+                Reading
+              </Text>
               <AnimatedLessonProgressBar value={readProgress} />
               <Text style={{ color: "#d0c2b0" }}>
                 Card {chapterIndex + 1} / {readCardCount}
@@ -357,8 +395,12 @@ export default function LessonFlowScreen() {
 
           {stage === "quiz" && currentQuiz && normalized ? (
             <View style={{ gap: 12 }}>
-              <Text style={{ color: "white", fontSize: 22, fontWeight: "700" }}>Quiz</Text>
-              <AnimatedLessonProgressBar value={(quizIndex + 1) / Math.max(1, lesson.quizzes.length)} />
+              <Text style={{ color: "white", fontSize: 22, fontWeight: "700" }}>
+                Quiz
+              </Text>
+              <AnimatedLessonProgressBar
+                value={(quizIndex + 1) / Math.max(1, lesson.quizzes.length)}
+              />
               <Text style={{ color: "#d0c2b0" }}>
                 Question {quizIndex + 1} / {lesson.quizzes.length}
               </Text>
@@ -375,13 +417,19 @@ export default function LessonFlowScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  {normalized.isPoll ? "POLL" : normalized.type.replace("_", " ").toUpperCase()}
+                  {normalized.isPoll
+                    ? "POLL"
+                    : normalized.type.replace("_", " ").toUpperCase()}
                 </Text>
                 {normalized.isPoll && currentQuiz.pollDescription ? (
-                  <Text style={{ color: "#d0c2b0", flex: 1 }}>{currentQuiz.pollDescription}</Text>
+                  <Text style={{ color: "#d0c2b0", flex: 1 }}>
+                    {currentQuiz.pollDescription}
+                  </Text>
                 ) : null}
               </View>
-              <Text style={{ color: "white", fontSize: 18, fontWeight: "700" }}>{currentQuiz.question}</Text>
+              <Text style={{ color: "white", fontSize: 18, fontWeight: "700" }}>
+                {currentQuiz.question}
+              </Text>
               {normalized.labels.map((label, index) => (
                 <QuizOptionCard
                   key={`${currentQuiz.id}-${index}`}
@@ -411,7 +459,9 @@ export default function LessonFlowScreen() {
 
           {stage === "feedback" ? (
             <View style={{ gap: 10 }}>
-              <Text style={{ color: "white", fontSize: 22, fontWeight: "700" }}>Feedback</Text>
+              <Text style={{ color: "white", fontSize: 22, fontWeight: "700" }}>
+                Feedback
+              </Text>
               <Text style={{ color: "#d0c2b0" }}>How was this lesson?</Text>
               <FeedbackStars rating={rating} onChange={setRating} />
               <TextInput
@@ -433,18 +483,33 @@ export default function LessonFlowScreen() {
               />
               <Pressable
                 onPress={submitFeedback}
-                style={{ backgroundColor: "#f8d568", borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+                style={{
+                  backgroundColor: "#f8d568",
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                }}
               >
-                <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>Send Feedback</Text>
+                <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>
+                  Send Feedback
+                </Text>
               </Pressable>
-              {status ? <Text style={{ color: "#d0c2b0" }}>{status}</Text> : null}
+              {status ? (
+                <Text style={{ color: "#d0c2b0" }}>{status}</Text>
+              ) : null}
             </View>
           ) : null}
 
           {stage === "done" ? (
             <View style={{ gap: 10 }}>
-              <Text style={{ color: "#f8d568", fontWeight: "700", fontSize: 22 }}>Quest Complete</Text>
-              <Text style={{ color: "white" }}>Thank you — your journey continues.</Text>
+              <Text
+                style={{ color: "#f8d568", fontWeight: "700", fontSize: 22 }}
+              >
+                Quest Complete
+              </Text>
+              <Text style={{ color: "white" }}>
+                Thank you — your journey continues.
+              </Text>
             </View>
           ) : null}
         </ScrollView>

@@ -24,8 +24,21 @@ export async function registerWithEmail(input: {
   });
 }
 
+export async function loginWithGoogle(input: {
+  idToken: string;
+  accessToken: string;
+  language?: string;
+}): Promise<AuthResponse> {
+  return apiRequest<AuthResponse>("/auth/google", {
+    method: "POST",
+    body: input,
+  });
+}
+
 export async function getMe(token: string): Promise<UserProfile> {
-  const response = await apiRequest<{ user: UserProfile }>("/auth/me", { token });
+  const response = await apiRequest<{ user: UserProfile }>("/auth/me", {
+    token,
+  });
   return response.user;
 }
 

@@ -1,7 +1,31 @@
-import { getMe, loginWithEmail, logout, registerWithEmail, type UserProfile } from "@/lib/api";
+import {
+  getMe,
+  loginWithEmail,
+  loginWithGoogle,
+  logout,
+  registerWithEmail,
+  type UserProfile,
+} from "@/lib/api";
 import { clearToken, loadToken, saveToken } from "@/lib/auth/token-storage";
 import { useRouter } from "expo-router";
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import * as WebBrowser from "expo-web-browser";
+import * as Google from "expo-auth-session/providers/google";
+import { Platform } from "react-native";
+
+// Google OAuth Client IDs
+const GOOGLE_CLIENT_IDS = {
+  ios: "558389557921-q5ncmqk6v8tdlub0627pkp1bi0she93n.apps.googleusercontent.com",
+  android:
+    "558389557921-4m38u0474fi4naqql3sakmh2iri28h9m.apps.googleusercontent.com",
+  web: "558389557921-ss8viikrjsfabtoct3cle0thi0iokst2.apps.googleusercontent.com",
+};
 
 type AuthContextValue = {
   user: UserProfile | null;
@@ -10,6 +34,7 @@ type AuthContextValue = {
   isBootstrapping: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (username: string, email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshMe: () => Promise<void>;
 };
@@ -22,6 +47,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const router = useRouter();
+
+  const clientId =
+    Platform.OS === "ios"
+      ? GOOGLE_CLIENT_IDS.ios
+      : Platform.OS === "android"
+        ? GOOGLE_CLIENT_IDS.android
+        : GOOGLE_CLIENT_IDS.web;
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId,
+    iosClientId: GOOGLE_CLIENT_IDS.ios,
+    androidClientId: GOOGLE_CLIENT_IDS.android,
+    webClientId: GOOGLE_CLIENT_IDS.web,
+  });
+
+  // Warm up browser
+  useEffect(() => {
+    WebBrowser.warmUpAsync();
+  }, []);
 
   useEffect(() => {
     async function bootstrapAuth() {
@@ -70,6 +114,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function signInWithGoogle() {
+    setIsLoading(true);
+    try {
+      await promptAsync();
+      if (response?.type === "success" && response.authentication) {
+        const { idToken, accessToken } = response.authentication;
+        if (!idToken || !accessToken) {
+          throw new Error("Failed to get authentication tokens from Google");
+        }
+
+        const authResponse = await loginWithGoogle({
+          idToken,
+          accessToken,
+        });
+
+        await saveToken(authResponse.token);
+        setToken(authResponse.token);
+        setUser(authResponse.user);
+        router.replace("/(tabs)/home");
+      } else if (response?.type === "error") {
+        throw new Error(
+          response.error?.message || "Google authentication failed",
+        );
+      }
+    } catch (error) {
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   async function signOut() {
     setIsLoading(true);
     try {
@@ -99,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isBootstrapping,
       signIn,
       signUp,
+      signInWithGoogle,
       signOut,
       refreshMe,
     }),

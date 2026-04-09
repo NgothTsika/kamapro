@@ -36,9 +36,7 @@ import type {
 } from "@/lib/kama-types";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "https://kama-api.vercel.app/api/v1";
+  process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
 
 type ApiOptions = {
   token?: string;
@@ -97,6 +95,7 @@ export async function getMe(token: string): Promise<MeUser> {
   return data.user;
 }
 
+// ==================== Admin Moderation ====================
 export async function getAdminReports(
   token: string,
   status?: AdminReportStatus,

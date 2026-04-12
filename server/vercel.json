@@ -1,33 +1,16 @@
 {
-  "buildCommand": "yarn build",
+  "buildCommand": "npm run generate && npm run build",
   "outputDirectory": "dist",
-  "rootDirectory": ".",
   "functions": {
-    "api/index.ts": {
-      "memory": 1024,
+    "dist/api/index.js": {
       "maxDuration": 60,
-      "runtime": "nodejs20.x"
+      "memory": 1024
     }
   },
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/api/index.ts",
-      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+      "dest": "dist/api/index.js"
     }
-  ],
-  "env": [
-    "DATABASE_URL",
-    "DIRECT_URL",
-    "NODE_ENV",
-    "PORT",
-    "CORS_ORIGIN",
-    "SUPABASE_URL",
-    "SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY",
-    "JWT_SECRET",
-    "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET",
-    "SESSION_TTL_DAYS"
   ]
 }

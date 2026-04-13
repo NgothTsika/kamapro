@@ -29,6 +29,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getAdminToken } from "@/lib/admin-auth";
+import {
+  getGameEvents,
+  createGameEvent,
+  deleteGameEvent,
+} from "@/lib/kama-api";
 import { toast } from "sonner";
 
 interface GameEvent {
@@ -68,13 +73,7 @@ export default function SpecialEventsPage() {
 
     try {
       setLoadingEvents(true);
-      const res = await fetch(`/api/v1/admin/gamification/events`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to fetch events");
-
-      const data = await res.json();
+      const data = await getGameEvents(token);
       setEvents(Array.isArray(data) ? data : data.events || []);
     } catch (err) {
       setEvents([]);
@@ -88,21 +87,12 @@ export default function SpecialEventsPage() {
 
     try {
       setCreatingEvent(true);
-      const res = await fetch(`/api/v1/admin/gamification/events`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          eventName,
-          multiplier,
-          durationHours,
-          affectedSystem,
-        }),
+      await createGameEvent(token, {
+        eventName,
+        multiplier,
+        durationHours,
+        affectedSystem,
       });
-
-      if (!res.ok) throw new Error("Failed to create event");
 
       toast.success(
         `Event "${eventName}" created with ${multiplier}x multiplier`,
@@ -130,12 +120,7 @@ export default function SpecialEventsPage() {
     if (!token) return;
 
     try {
-      const res = await fetch(`/api/v1/admin/gamification/events/${eventId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to delete event");
+      await deleteGameEvent(token, eventId);
 
       toast.success("Event deleted successfully");
       await loadEvents();

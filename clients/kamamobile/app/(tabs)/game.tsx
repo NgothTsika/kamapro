@@ -6,13 +6,19 @@ import {
   type Topic,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { Colors } from "@/constants/theme";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 export default function GameScreen() {
   const { token } = useAuth();
+  const colorScheme = useColorScheme() ?? "light";
+  const colors = Colors[colorScheme];
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [selectedTopicId, setSelectedTopicId] = useState<string | undefined>(undefined);
+  const [selectedTopicId, setSelectedTopicId] = useState<string | undefined>(
+    undefined,
+  );
   const [isLoadingPool, setIsLoadingPool] = useState(false);
   const [status, setStatus] = useState("Pick a topic and start 1v1.");
 
@@ -32,9 +38,7 @@ export default function GameScreen() {
     }
 
     const allTopicQuizSets = await Promise.all(
-      topics
-        .slice(0, 8)
-        .map((topic) => getRandomTopicQuizIds(topic.id, 8)),
+      topics.slice(0, 8).map((topic) => getRandomTopicQuizIds(topic.id, 8)),
     );
     const quizIds = allTopicQuizSets.flatMap((quizSet) => quizSet);
 
@@ -58,7 +62,11 @@ export default function GameScreen() {
         quizPool,
         maxRounds: Math.min(5, quizPool.length),
       });
-      setStatus(result.isNew ? "Room created. Waiting for challenger." : "Match found! Ready to start.");
+      setStatus(
+        result.isNew
+          ? "Room created. Waiting for challenger."
+          : "Match found! Ready to start.",
+      );
     } catch {
       setStatus("Could not create a 1v1 match. Check topic quizzes and retry.");
     } finally {
@@ -67,13 +75,29 @@ export default function GameScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#121212", paddingTop: 56, paddingHorizontal: 16 }}>
-      <Text style={{ color: "white", fontSize: 24, fontWeight: "700" }}>1v1 Battle</Text>
-      <Text style={{ color: "#bdbdbd", marginTop: 6 }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.background,
+        paddingTop: 56,
+        paddingHorizontal: 16,
+      }}
+    >
+      <Text style={{ color: colors.text, fontSize: 24, fontWeight: "700" }}>
+        1v1 Battle
+      </Text>
+      <Text style={{ color: colors.textSecondary, marginTop: 6 }}>
         Paladin-style duel experience with African story themes.
       </Text>
 
-      <Text style={{ color: "white", marginTop: 22, marginBottom: 10, fontWeight: "600" }}>
+      <Text
+        style={{
+          color: colors.text,
+          marginTop: 22,
+          marginBottom: 10,
+          fontWeight: "600",
+        }}
+      >
         Choose Topic
       </Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -87,10 +111,12 @@ export default function GameScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 8,
                 borderRadius: 999,
-                backgroundColor: active ? "#f8d568" : "#1f1f1f",
+                backgroundColor: active ? colors.primary : colors.card,
               }}
             >
-              <Text style={{ color: active ? "#1a1a1a" : "white" }}>{topic.name}</Text>
+              <Text style={{ color: active ? colors.background : colors.text }}>
+                {topic.name}
+              </Text>
             </Pressable>
           );
         })}
@@ -99,14 +125,22 @@ export default function GameScreen() {
       <Pressable
         onPress={startQuickPlay}
         disabled={isLoadingPool}
-        style={{ marginTop: 22, backgroundColor: "#f8d568", borderRadius: 10, alignItems: "center", paddingVertical: 12 }}
+        style={{
+          marginTop: 22,
+          backgroundColor: colors.primary,
+          borderRadius: 10,
+          alignItems: "center",
+          paddingVertical: 12,
+        }}
       >
-        <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>
+        <Text style={{ color: colors.background, fontWeight: "700" }}>
           {isLoadingPool ? "Building quiz pool..." : "Start 1v1"}
         </Text>
       </Pressable>
 
-      <Text style={{ color: "#d0d0d0", marginTop: 14 }}>{status}</Text>
+      <Text style={{ color: colors.textSecondary, marginTop: 14 }}>
+        {status}
+      </Text>
     </View>
   );
 }

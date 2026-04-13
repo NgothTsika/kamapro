@@ -23,6 +23,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { getAdminToken } from "@/lib/admin-auth";
+import {
+  getHeartsStats,
+  getStreaksStats,
+  getCharactersStats,
+} from "@/lib/kama-api";
 
 interface GameificationStats {
   hearts?: {
@@ -63,21 +68,11 @@ export default function GamificationDashboard() {
       }
 
       try {
-        const [heartsRes, streaksRes, charactersRes] = await Promise.all([
-          fetch("/api/v1/admin/gamification/hearts/stats", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch("/api/v1/admin/gamification/streaks/stats", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch("/api/v1/admin/gamification/characters/stats", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+        const [hearts, streaks, characters] = await Promise.all([
+          getHeartsStats(token),
+          getStreaksStats(token),
+          getCharactersStats(token),
         ]);
-
-        const hearts = await heartsRes.json();
-        const streaks = await streaksRes.json();
-        const characters = await charactersRes.json();
 
         setStats({
           hearts,

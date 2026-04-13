@@ -38,17 +38,48 @@ contentRouter.get(
   asyncHandler(async (_req, res) => {
     const categories = await prisma.category.findMany({
       orderBy: [{ order: "asc" }, { createdAt: "desc" }],
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        description: true,
-        coverImage: true,
-        icon: true,
+      include: {
+        lessons: {
+          select: {
+            id: true,
+            chapters: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+        characterCategories: {
+          select: {
+            characterId: true,
+          },
+        },
       },
     });
 
-    res.status(200).json({ categories });
+    // Transform categories to include computed counts
+    const categoriesWithCounts = categories.map((category) => {
+      const lessonCount = category.lessons.length;
+      const totalChapters = category.lessons.reduce(
+        (sum, lesson) => sum + lesson.chapters.length,
+        0,
+      );
+      const characterCount = category.characterCategories.length;
+
+      return {
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        description: category.description,
+        coverImage: category.coverImage,
+        icon: category.icon,
+        lessonCount,
+        totalChapters,
+        characterCount,
+      };
+    });
+
+    res.status(200).json({ categories: categoriesWithCounts });
   }),
 );
 

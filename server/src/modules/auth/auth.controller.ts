@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { asyncHandler } from "../../lib/http";
-import { HttpError } from "../../lib/errors";
+import { asyncHandler } from "../../lib/http.js";
+import { HttpError } from "../../lib/errors.js";
 import { requireAuth } from "../../middleware/auth.middleware";
 import { prisma } from "../../lib/prisma";
 import {

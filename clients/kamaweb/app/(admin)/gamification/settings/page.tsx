@@ -29,6 +29,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getAdminToken } from "@/lib/admin-auth";
+import {
+  getGamificationConfig,
+  updateGamificationConfig,
+} from "@/lib/kama-api";
 import { toast } from "sonner";
 
 interface Config {
@@ -70,13 +74,7 @@ export default function GamificationSettings() {
 
     try {
       setLoading(true);
-      const res = await fetch(`/api/v1/admin/gamification/config`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to fetch config");
-
-      const data = await res.json();
+      const data = await getGamificationConfig(token);
       setConfig(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load config");
@@ -91,16 +89,7 @@ export default function GamificationSettings() {
 
     try {
       setUpdatingSection(section);
-      const res = await fetch(`/api/v1/admin/gamification/config`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(config),
-      });
-
-      if (!res.ok) throw new Error("Failed to update config");
+      await updateGamificationConfig(token, config);
 
       toast.success(`${section} configuration updated successfully`);
       // Don't reload, just keep the updated state

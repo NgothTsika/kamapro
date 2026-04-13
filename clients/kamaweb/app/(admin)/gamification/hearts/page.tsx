@@ -30,6 +30,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getAdminToken } from "@/lib/admin-auth";
+import {
+  getHeartsData,
+  restoreUserHearts as restoreUserHeartsApi,
+  bulkRestoreHearts,
+  syncAllHearts,
+} from "@/lib/kama-api";
 import { toast } from "sonner";
 
 interface UserHearts {
@@ -80,16 +86,13 @@ export default function HeartsManagement() {
 
     try {
       setLoading(true);
-      const res = await fetch(
-        `/api/v1/admin/gamification/hearts?limit=${limit}&offset=${offset}&sortBy=hearts&order=desc`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
+      const data: HeartsData = await getHeartsData(
+        token,
+        limit,
+        offset,
+        "hearts",
+        "desc",
       );
-
-      if (!res.ok) throw new Error("Failed to fetch hearts");
-
-      const data: HeartsData = await res.json();
       setHearts(data.data);
       setTotal(data.total);
       if (data.configuredMaxHearts) {
@@ -109,19 +112,7 @@ export default function HeartsManagement() {
 
     try {
       setRestoring(userId);
-      const res = await fetch(
-        `/api/v1/admin/gamification/hearts/${userId}/restore`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ hearts: amount }),
-        },
-      );
-
-      if (!res.ok) throw new Error("Failed to restore hearts");
+      await restoreUserHeartsApi(token, userId, amount);
 
       toast.success(`Restored ${amount} hearts for ${userId}`);
       loadHearts();
@@ -138,18 +129,8 @@ export default function HeartsManagement() {
 
     try {
       setRestoring("all");
-      const res = await fetch(`/api/v1/admin/gamification/hearts/restore-all`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ hearts: configuredMaxHearts ?? 5 }),
-      });
+      const result = await bulkRestoreHearts(token, configuredMaxHearts ?? 5);
 
-      if (!res.ok) throw new Error("Failed to bulk restore");
-
-      const result = await res.json();
       toast.success(`Restored hearts for ${result.usersUpdated} users`);
       loadHearts();
     } catch (err) {
@@ -166,17 +147,8 @@ export default function HeartsManagement() {
 
     try {
       setRestoring("sync");
-      const res = await fetch(`/api/v1/admin/gamification/hearts/sync`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+      const result = await syncAllHearts(token);
 
-      if (!res.ok) throw new Error("Failed to sync hearts");
-
-      const result = await res.json();
       toast.success(
         `Synced ${result.totalUsersUpdated} users with gamification settings`,
       );

@@ -40,12 +40,6 @@
             "backgroundColor": "#000000"
           }
         }
-      ],
-      [
-        "expo-auth-session",
-        {
-          "googleClientId": "558389557921-ss8viikrjsfabtoct3cle0thi0iokst2.apps.googleusercontent.com"
-        }
       ]
     ],
     "experiments": {

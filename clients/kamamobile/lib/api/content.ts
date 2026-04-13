@@ -1,12 +1,21 @@
 import { apiRequest } from "@/lib/api/client";
 import type {
   Character,
+  Category,
   LessonDetail,
   LessonFull,
   LessonSummary,
   Topic,
   TopicQuiz,
 } from "@/lib/api/types";
+
+export async function getCategories(language?: string): Promise<Category[]> {
+  const query = language ? `?language=${encodeURIComponent(language)}` : "";
+  const response = await apiRequest<{ categories: Category[] }>(
+    `/content/categories${query}`,
+  );
+  return response.categories;
+}
 
 export async function getTopics(): Promise<Topic[]> {
   const response = await apiRequest<{ topics: Topic[] }>("/content/topics");
@@ -29,7 +38,10 @@ export async function getLessons(language?: string): Promise<LessonSummary[]> {
   return response.lessons;
 }
 
-export async function getLesson(lessonId: string, language?: string): Promise<LessonDetail> {
+export async function getLesson(
+  lessonId: string,
+  language?: string,
+): Promise<LessonDetail> {
   const query = language ? `?language=${encodeURIComponent(language)}` : "";
   const response = await apiRequest<{ lesson: LessonDetail }>(
     `/content/lessons/${lessonId}${query}`,

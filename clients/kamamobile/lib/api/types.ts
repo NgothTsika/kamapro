@@ -32,6 +32,18 @@ export type Topic = {
   parentId?: string | null;
 };
 
+export type Category = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  coverImage?: string | null;
+  icon?: string | null;
+  lessonCount: number;
+  characterCount: number;
+  totalChapters: number;
+};
+
 export type Character = {
   id: string;
   name: string;

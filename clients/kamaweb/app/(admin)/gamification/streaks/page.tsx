@@ -31,6 +31,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getAdminToken } from "@/lib/admin-auth";
+import {
+  getStreaksData,
+  resetUserStreak,
+  awardStreakXp,
+  freezeUserStreak,
+} from "@/lib/kama-api";
 import { toast } from "sonner";
 
 interface UserStreak {
@@ -79,16 +85,13 @@ export default function StreaksManagement() {
 
     try {
       setLoading(true);
-      const res = await fetch(
-        `/api/v1/admin/gamification/streaks?limit=${limit}&offset=${offset}&sortBy=current&order=desc`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
+      const data = await getStreaksData(
+        token,
+        limit,
+        offset,
+        "current",
+        "desc",
       );
-
-      if (!res.ok) throw new Error("Failed to fetch streaks");
-
-      const data: StreaksData = await res.json();
       setStreaks(data.data);
       setTotal(data.total);
     } catch (err) {
@@ -104,46 +107,23 @@ export default function StreaksManagement() {
 
     try {
       setOperating(selectedUserId);
-      let res;
 
       switch (actionType) {
         case "reset":
-          res = await fetch(
-            `/api/v1/admin/gamification/streaks/${selectedUserId}/reset`,
-            {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
-            },
-          );
+          await resetUserStreak(token, selectedUserId);
           break;
         case "award":
-          res = await fetch(
-            `/api/v1/admin/gamification/streaks/${selectedUserId}/award-xp`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                xpAmount: parseInt(xpAmount as any),
-                reason,
-              }),
-            },
+          await awardStreakXp(
+            token,
+            selectedUserId,
+            parseInt(xpAmount as any),
+            reason,
           );
           break;
         case "freeze":
-          res = await fetch(
-            `/api/v1/admin/gamification/streaks/${selectedUserId}/freeze`,
-            {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
-            },
-          );
+          await freezeUserStreak(token, selectedUserId);
           break;
       }
-
-      if (!res || !res.ok) throw new Error("Operation failed");
 
       const actionNames = {
         reset: "Reset streak",

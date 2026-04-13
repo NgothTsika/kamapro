@@ -23,11 +23,9 @@ const extra = Constants.expoConfig?.extra as
   | undefined;
 
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ??
-  process.env.EXPO_PUBLIC_API_BASE_URL ??
-  extra?.apiUrl ??
-  extra?.apiBaseUrl ??
-  "https://kama-api.vercel.app";
+  process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_API_BASE_URL;
+
+console.log("[API Client] Configured API_BASE_URL:", API_BASE_URL);
 
 export async function apiRequest<T>(
   path: string,

@@ -19,8 +19,37 @@ import { NextRequest, NextResponse } from "next/server";
  * - Reduced code duplication
  */
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
+// Get backend URL for API proxying
+// The backend URL should be configured per environment
+// Environment variables (in priority order):
+// 1. NEXT_PUBLIC_BACKEND_URL - Production backend URL (public, safe to expose)
+// 2. NEXT_PUBLIC_API_URL - Alternative production URL (deprecated, fallback)
+// 3. API_URL_DEPLOYED - Server-side production URL
+// 4. API_URL_LOCAL - Local development URL (defaults to localhost:4000)
+const getBackendUrl = () => {
+  const isDev = process.env.NODE_ENV !== "production";
+
+  // Get the backend URL from environment
+  const backendUrl =
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.API_URL_LOCAL ||
+    "http://localhost:4000";
+
+  if (!backendUrl || backendUrl === "http://localhost:4000") {
+    console.log(
+      "[API PROXY] Using default local backend: http://localhost:4000",
+    );
+  } else {
+    console.log(
+      `[API PROXY] ${isDev ? "Development" : "Production"} mode - Using backend: ${backendUrl}`,
+    );
+  }
+
+  return backendUrl.replace(/\/$/, ""); // Remove trailing slash
+};
+
+const BACKEND_URL = getBackendUrl();
 
 /**
  * Helper function to check if request needs authentication
@@ -88,12 +117,17 @@ export async function handler(
     }
 
     // Construct backend URL
-    // Strip "/v1/" prefix if present since BACKEND_URL already includes it
+    // Remove /v1 prefix if present (it's part of the route but not backend path)
     let path = pathname;
     if (path.startsWith("/v1/")) {
       path = path.slice(3); // Remove "/v1"
     }
+
+    // Build the full backend URL
+    // BACKEND_URL is now clean (no /api/v1 suffix), so append the path directly
     const backendUrl = `${BACKEND_URL}${path}${searchParams}`;
+
+    console.log(`[API PROXY] Routing: ${pathname} → ${backendUrl}`);
 
     // Determine if this is a multipart request
     const contentType = request.headers.get("content-type") || "";

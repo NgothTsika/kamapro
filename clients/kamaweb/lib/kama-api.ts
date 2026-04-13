@@ -35,8 +35,9 @@ import type {
   StreakCheckInResponse,
 } from "@/lib/kama-types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
+// Use the local Next.js API proxy instead of calling backend directly
+// This ensures consistent behavior across environments and proper auth handling
+const API_BASE_URL = "/api";
 
 type ApiOptions = {
   token?: string;
@@ -878,6 +879,23 @@ export async function getAdminUsers(token: string): Promise<AdminUser[]> {
     token,
   });
   return data.users;
+}
+
+export async function createAdminUser(
+  token: string,
+  payload: {
+    email: string;
+    password: string;
+    role: string;
+    name?: string;
+  },
+): Promise<AdminUser> {
+  const data = await apiRequest<{ user: AdminUser }>("/users/admin", {
+    token,
+    method: "POST",
+    body: payload,
+  });
+  return data.user;
 }
 
 export async function updateAdminUser(
@@ -2097,301 +2115,200 @@ export const progressAdminAPI = {
   },
 };
 
-export async function getHearts(): Promise<UserHeartsResponse> {
-  const response = await fetch(`${API_BASE_URL}/hearts`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
-  });
+// ========================
+// GAMIFICATION ADMIN API
+// ========================
 
-  if (!response.ok) throw new Error("Failed to get hearts");
-  return response.json();
+/**
+ * Get hearts statistics
+ */
+export async function getHeartsStats(token: string): Promise<any> {
+  return apiRequest<any>("/admin/gamification/hearts/stats", { token });
 }
 
 /**
- * Lose a heart (quiz failed)
+ * Get hearts data with pagination
  */
-export async function loseHeart() {
-  const response = await fetch(`${API_BASE_URL}/hearts/lose`, {
+export async function getHeartsData(
+  token: string,
+  limit: number = 50,
+  offset: number = 0,
+  sortBy: string = "hearts",
+  order: string = "desc",
+): Promise<any> {
+  return apiRequest<any>(
+    `/admin/gamification/hearts?limit=${limit}&offset=${offset}&sortBy=${sortBy}&order=${order}`,
+    { token },
+  );
+}
+
+/**
+ * Restore hearts for a specific user
+ */
+export async function restoreUserHearts(
+  token: string,
+  userId: string,
+  hearts: number,
+): Promise<any> {
+  return apiRequest<any>(`/admin/gamification/hearts/${userId}/restore`, {
+    token,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
+    body: { hearts },
   });
-
-  if (!response.ok) throw new Error("Failed to lose heart");
-  return response.json();
 }
 
 /**
- * Check and recover hearts manually
+ * Bulk restore all users' hearts
  */
-export async function recoverHearts(): Promise<UserHeartsResponse> {
-  const response = await fetch(`${API_BASE_URL}/hearts/recover`, {
+export async function bulkRestoreHearts(
+  token: string,
+  hearts: number,
+): Promise<any> {
+  return apiRequest<any>("/admin/gamification/hearts/restore-all", {
+    token,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
+    body: { hearts },
   });
-
-  if (!response.ok) throw new Error("Failed to recover hearts");
-  return response.json();
-}
-
-// ========================
-// STREAKS API
-// ========================
-
-/**
- * Get current streak and status
- */
-export async function getStreak(): Promise<UserStreakResponse> {
-  const response = await fetch(`${API_BASE_URL}/streak`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
-  });
-
-  if (!response.ok) throw new Error("Failed to get streak");
-  return response.json();
 }
 
 /**
- * Record daily check-in (quiz/lesson completion)
+ * Sync all hearts with settings
  */
-export async function checkInDaily(
-  xpEarned: number = 0,
-): Promise<StreakCheckInResponse> {
-  const response = await fetch(`${API_BASE_URL}/streak/checkin`, {
+export async function syncAllHearts(token: string): Promise<any> {
+  return apiRequest<any>("/admin/gamification/hearts/sync", {
+    token,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
-    body: JSON.stringify({ xpEarned }),
   });
-
-  if (!response.ok) throw new Error("Failed to check in");
-  return response.json();
 }
 
 /**
- * Freeze streak for 24 hours
+ * Get streaks statistics
  */
-export async function freezeStreak(): Promise<FreezeStreakResponse> {
-  const response = await fetch(`${API_BASE_URL}/streak/freeze`, {
+export async function getStreaksStats(token: string): Promise<any> {
+  return apiRequest<any>("/admin/gamification/streaks/stats", { token });
+}
+
+/**
+ * Get streaks data with pagination
+ */
+export async function getStreaksData(
+  token: string,
+  limit: number = 50,
+  offset: number = 0,
+  sortBy: string = "current",
+  order: string = "desc",
+): Promise<any> {
+  return apiRequest<any>(
+    `/admin/gamification/streaks?limit=${limit}&offset=${offset}&sortBy=${sortBy}&order=${order}`,
+    { token },
+  );
+}
+
+/**
+ * Reset a user's streak
+ */
+export async function resetUserStreak(
+  token: string,
+  userId: string,
+): Promise<any> {
+  return apiRequest<any>(`/admin/gamification/streaks/${userId}/reset`, {
+    token,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
   });
-
-  if (!response.ok) throw new Error("Failed to freeze streak");
-  return response.json();
 }
 
-// ========================
-// CHARACTERS API
-// ========================
-
 /**
- * Get all unlocked characters
+ * Award XP to a user's streak
  */
-export async function getUnlockedCharacters(): Promise<UnlockedCharactersResponse> {
-  const response = await fetch(`${API_BASE_URL}/characters/unlocked`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
+export async function awardStreakXp(
+  token: string,
+  userId: string,
+  xpAmount: number,
+  reason: string,
+): Promise<any> {
+  return apiRequest<any>(`/admin/gamification/streaks/${userId}/award-xp`, {
+    token,
+    method: "POST",
+    body: { xpAmount, reason },
   });
-
-  if (!response.ok) throw new Error("Failed to get unlocked characters");
-  return response.json();
 }
 
 /**
- * Get favorite characters
+ * Freeze a user's streak
  */
-export async function getFavoriteCharacters(): Promise<UnlockedCharactersResponse> {
-  const response = await fetch(`${API_BASE_URL}/characters/favorites`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
+export async function freezeUserStreak(
+  token: string,
+  userId: string,
+): Promise<any> {
+  return apiRequest<any>(`/admin/gamification/streaks/${userId}/freeze`, {
+    token,
+    method: "POST",
   });
-
-  if (!response.ok) throw new Error("Failed to get favorite characters");
-  return response.json();
 }
 
 /**
- * Get character unlock progress
+ * Get characters statistics
  */
-export async function getCharacterUnlockProgress(
-  characterId: string,
-): Promise<CharacterUnlockProgress> {
-  const response = await fetch(
-    `${API_BASE_URL}/characters/${characterId}/progress`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    },
-  );
-
-  if (!response.ok) throw new Error("Failed to get character progress");
-  return response.json();
+export async function getCharactersStats(token: string): Promise<any> {
+  return apiRequest<any>("/admin/gamification/characters/stats", { token });
 }
 
 /**
- * Unlock a character
+ * Get events list
  */
-export async function unlockCharacter(
-  characterId: string,
-): Promise<UnlockCharacterResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/characters/${characterId}/unlock`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    },
-  );
-
-  if (!response.ok) throw new Error("Failed to unlock character");
-  return response.json();
+export async function getGameEvents(token: string): Promise<any> {
+  return apiRequest<any>("/admin/gamification/events", { token });
 }
 
 /**
- * Purchase character with XP
+ * Create a game event
  */
-export async function purchaseCharacter(
-  characterId: string,
-): Promise<PurchaseCharacterResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/characters/${characterId}/purchase`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    },
-  );
-
-  if (!response.ok) throw new Error("Failed to purchase character");
-  return response.json();
-}
-
-/**
- * Set character favorite level (0-3)
- */
-export async function setCharacterFavorite(
-  characterId: string,
-  level: number,
-): Promise<FavoriteCharacterResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/characters/${characterId}/favorite`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-      body: JSON.stringify({ level }),
-    },
-  );
-
-  if (!response.ok) throw new Error("Failed to set favorite");
-  return response.json();
-}
-
-// ========================
-// CHALLENGES API
-// ========================
-
-/**
- * Get today's challenges with progress
- */
-export async function getChallenges(): Promise<ChallengesResponse> {
-  const response = await fetch(`${API_BASE_URL}/challenges`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
+export async function createGameEvent(
+  token: string,
+  data: {
+    eventName: string;
+    multiplier: number;
+    durationHours: number;
+    affectedSystem: string;
+  },
+): Promise<any> {
+  return apiRequest<any>("/admin/gamification/events", {
+    token,
+    method: "POST",
+    body: data,
   });
-
-  if (!response.ok) throw new Error("Failed to get challenges");
-  return response.json();
 }
 
 /**
- * Get challenge statistics
+ * Delete a game event
  */
-export async function getChallengeStats(): Promise<ChallengeStatsResponse> {
-  const response = await fetch(`${API_BASE_URL}/challenges/stats`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
+export async function deleteGameEvent(
+  token: string,
+  eventId: string,
+): Promise<any> {
+  return apiRequest<any>(`/admin/gamification/events/${eventId}`, {
+    token,
+    method: "DELETE",
   });
-
-  if (!response.ok) throw new Error("Failed to get challenge stats");
-  return response.json();
 }
 
 /**
- * Claim challenge reward
+ * Get gamification configuration
  */
-export async function claimChallenge(
-  challengeId: string,
-): Promise<ClaimChallengeResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/challenges/${challengeId}/claim`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    },
-  );
-
-  if (!response.ok) throw new Error("Failed to claim challenge");
-  return response.json();
+export async function getGamificationConfig(token: string): Promise<any> {
+  return apiRequest<any>("/admin/gamification/config", { token });
 }
 
-// ========================
-// SUMMARY API
-// ========================
-
 /**
- * Get overall gamification summary
+ * Update gamification configuration
  */
-export async function getGamificationSummary(): Promise<GamificationSummary> {
-  const response = await fetch(`${API_BASE_URL}/summary`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
+export async function updateGamificationConfig(
+  token: string,
+  config: any,
+): Promise<any> {
+  return apiRequest<any>("/admin/gamification/config", {
+    token,
+    method: "PUT",
+    body: config,
   });
-
-  if (!response.ok) throw new Error("Failed to get gamification summary");
-  return response.json();
 }

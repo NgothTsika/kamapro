@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { getAdminToken } from "@/lib/admin-auth";
+import { getCharactersStats } from "@/lib/kama-api";
 import { toast } from "sonner";
 
 interface CharacterStat {
@@ -57,13 +58,7 @@ export default function CharactersManagement() {
 
     try {
       setLoading(true);
-      const res = await fetch(`/api/v1/admin/gamification/characters/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to fetch characters");
-
-      const data: CharactersData = await res.json();
+      const data: CharactersData = await getCharactersStats(token);
       setCharacters(data.data);
       setStats(data);
     } catch (err) {

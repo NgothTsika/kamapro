@@ -38,6 +38,12 @@ import {
 } from "@/components/ui/select";
 import { getAdminToken } from "@/lib/admin-auth";
 import type { AdminUser } from "@/lib/kama-types";
+import {
+  getAdminUsers,
+  updateAdminUser,
+  deleteAdminUser,
+  createAdminUser,
+} from "@/lib/kama-api";
 
 const emptyForm = {
   role: "USER",
@@ -58,12 +64,8 @@ export default function UsersPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/users/admin`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to load users");
-      const data = await res.json();
-      setRows(data.users || []);
+      const users = await getAdminUsers(token);
+      setRows(users || []);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load users");
     } finally {
@@ -101,16 +103,7 @@ export default function UsersPage() {
       };
       console.log("Updating user:", editing.id, payload);
 
-      const res = await fetch(`/api/v1/users/admin/${editing.id}`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error("Failed to update user");
+      await updateAdminUser(token, editing.id, payload);
 
       toast.success("User updated");
       setOpen(false);
@@ -131,12 +124,7 @@ export default function UsersPage() {
     const token = getAdminToken();
     if (!token) return;
     try {
-      const res = await fetch(`/api/v1/users/admin/${row.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to delete user");
+      await deleteAdminUser(token, row.id);
 
       toast.success("User deleted");
       await load();

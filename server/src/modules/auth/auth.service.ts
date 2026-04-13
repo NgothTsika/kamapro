@@ -1,7 +1,7 @@
 import { OAuth2Client } from "google-auth-library";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import crypto from "crypto";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { User } from "@prisma/client";
 import { env } from "../../config/env";
 import { prisma } from "../../lib/prisma";

@@ -9,6 +9,7 @@ export default defineConfig({
   },
   engine: "classic",
   datasource: {
-    url: env("DIRECT_URL") || env("DATABASE_URL"),
+    url: env("DIRECT_URL"),
+    directUrl: env("DATABASE_URL"),
   },
 });

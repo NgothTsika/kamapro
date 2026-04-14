@@ -371,6 +371,7 @@ model Character {
 
   translations CharacterTranslation[]
   collectedBy  CollectedCharacter[]
+  collectionsContaining CharacterCollectionItem[] @relation("CharacterInCollections")
   
   @@index([entityType])
   @@index([personType])
@@ -379,6 +380,33 @@ model Character {
   @@index([traditionType])
   @@index([conceptType])
   @@index([country])
+}
+
+// Admin-managed character collections (e.g., "Great African Leaders", "Female Warriors")
+model CharacterCollection {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items CharacterCollectionItem[]
+
+  @@index([name])
+}
+
+model CharacterCollectionItem {
+  id           String                @id @default(cuid())
+  collectionId String
+  collection   CharacterCollection   @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  characterId  String
+  character    Character             @relation("CharacterInCollections", fields: [characterId], references: [id], onDelete: Cascade)
+  order        Int                   @default(0)
+  addedAt      DateTime              @default(now())
+
+  @@unique([collectionId, characterId])
+  @@index([collectionId])
+  @@index([characterId])
 }
 
 model CharacterTranslation {

@@ -387,12 +387,15 @@ model CharacterCollection {
   id          String   @id @default(cuid())
   name        String   @unique
   description String?
+  coverImage  String?  // Collection cover image URL
+  order       Int      @default(0)  // Display order for home page and listings
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   items CharacterCollectionItem[]
 
   @@index([name])
+  @@index([order])
 }
 
 model CharacterCollectionItem {

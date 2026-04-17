@@ -568,6 +568,28 @@ export type LeaderboardStatistics = {
   activityTrends: Array<{ date: string; activeUsers: number }>;
 };
 
+// ---------- CHARACTER COLLECTIONS ADMIN TYPES ----------
+export type AdminCharacterCollectionSummary = {
+  id: string;
+  name: string;
+  description?: string;
+  coverImage?: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+  characterCount: number;
+};
+
+export type AdminCharacterCollectionDetail = AdminCharacterCollectionSummary & {
+  characters: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    imageUrl?: string;
+    rarityLevel?: string;
+  }>;
+};
+
 // ---------- COLLECTIONS ADMIN TYPES ----------
 export type AdminCollectionSummary = {
   id: string;

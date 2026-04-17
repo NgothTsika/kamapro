@@ -21,6 +21,7 @@ export const Colors = {
     surface: "#17110c",
     surfaceAlt: "#1d1510",
     card: "#1d1510",
+    cardBackground: "#17110c",
 
     // Text colors
     textG: "#ffffff",
@@ -65,6 +66,7 @@ export const Colors = {
     surface: "#f8f8f8",
     surfaceAlt: "#f0f0f0",
     card: "#f5f5f5",
+    cardBackground: "#f8f8f8",
 
     // Text colors
     textG: "#1a1a1a",

@@ -3,6 +3,8 @@ import type {
   AdminCategory,
   AdminCharacter,
   AdminCharacterDetail,
+  AdminCharacterCollectionSummary,
+  AdminCharacterCollectionDetail,
   AdminLessonDetail,
   AdminLessonSummary,
   AdminUser,
@@ -1524,6 +1526,97 @@ export const collectionsAdminAPI = {
     }>(`/admin/collections/analytics`, { token });
   },
 };
+
+// ==================== Character Collections Admin ====================
+
+/**
+ * Get all character collections for admin
+ */
+export async function getCharacterCollections(
+  token: string,
+): Promise<AdminCharacterCollectionSummary[]> {
+  const data = await apiRequest<{
+    collections: AdminCharacterCollectionSummary[];
+  }>("/content/admin/character-collections", { token });
+  return data.collections;
+}
+
+/**
+ * Get single character collection with all characters
+ */
+export async function getCharacterCollection(
+  token: string,
+  collectionId: string,
+): Promise<AdminCharacterCollectionDetail> {
+  const data = await apiRequest<{ collection: AdminCharacterCollectionDetail }>(
+    `/content/admin/character-collections/${collectionId}`,
+    { token },
+  );
+  return data.collection;
+}
+
+/**
+ * Create a new character collection
+ */
+export async function createCharacterCollection(
+  token: string,
+  payload: {
+    name: string;
+    description?: string;
+    coverImage?: string;
+    order?: number;
+    characterIds: string[];
+  },
+): Promise<AdminCharacterCollectionSummary> {
+  const data = await apiRequest<{
+    collection: AdminCharacterCollectionSummary;
+  }>("/content/admin/character-collections", {
+    token,
+    method: "POST",
+    body: payload,
+  });
+  return data.collection;
+}
+
+/**
+ * Update a character collection
+ */
+export async function updateCharacterCollection(
+  token: string,
+  collectionId: string,
+  payload: {
+    name?: string;
+    description?: string;
+    coverImage?: string;
+    order?: number;
+    characterIds?: string[];
+  },
+): Promise<AdminCharacterCollectionSummary> {
+  const data = await apiRequest<{
+    collection: AdminCharacterCollectionSummary;
+  }>(`/content/admin/character-collections/${collectionId}`, {
+    token,
+    method: "PATCH",
+    body: payload,
+  });
+  return data.collection;
+}
+
+/**
+ * Delete a character collection
+ */
+export async function deleteCharacterCollection(
+  token: string,
+  collectionId: string,
+): Promise<void> {
+  await apiRequest<void>(
+    `/content/admin/character-collections/${collectionId}`,
+    {
+      token,
+      method: "DELETE",
+    },
+  );
+}
 
 // ============================================================================
 // COMMUNITY ADMIN API

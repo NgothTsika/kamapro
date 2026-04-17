@@ -53,6 +53,26 @@ export type Character = {
   rarityLevel?: string | null;
 };
 
+export type CharacterInCollection = {
+  id: string;
+  name: string;
+  slug: string;
+  imageUrl?: string | null;
+  rarityLevel?: string | null;
+};
+
+export type CharacterCollection = {
+  id: string;
+  name: string;
+  description?: string | null;
+  coverImage?: string | null;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+  characterCount: number;
+  characters?: CharacterInCollection[] | null;
+};
+
 export type HeartState = {
   hearts: number;
   maxHearts: number;

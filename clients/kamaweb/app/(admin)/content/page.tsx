@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, FolderTree, Layers, Users, HelpCircle } from "lucide-react";
+import {
+  BookOpen,
+  FolderTree,
+  Layers,
+  Users,
+  HelpCircle,
+  Box,
+} from "lucide-react";
 import {
   Card,
   CardDescription,
@@ -40,6 +47,12 @@ const links = [
       "Manage quizzes organized by topic with support for multiple question types.",
     href: "/content/quizzes",
     icon: HelpCircle,
+  },
+  {
+    title: "Collections",
+    description: "Create curated collections of characters for learning.",
+    href: "/content/collections",
+    icon: Box,
   },
 ];
 

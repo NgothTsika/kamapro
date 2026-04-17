@@ -547,3 +547,93 @@ contentRouter.get(
     });
   }),
 );
+
+// ---------- Character Collections (Public) ----------
+contentRouter.get(
+  "/character-collections",
+  asyncHandler(async (_req, res) => {
+    const collections = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        coverImage: string | null;
+        order: number;
+        createdAt: Date;
+        updatedAt: Date;
+        characterCount: number;
+      }>
+    >`
+      SELECT 
+        cc.id,
+        cc.name,
+        cc.description,
+        cc."coverImage",
+        cc."order",
+        cc."createdAt",
+        cc."updatedAt",
+        COUNT(cci.id)::int as "characterCount"
+      FROM "CharacterCollection" cc
+      LEFT JOIN "CharacterCollectionItem" cci ON cc.id = cci."collectionId"
+      GROUP BY cc.id
+      ORDER BY cc."order" ASC, cc."createdAt" DESC
+    `;
+    res.status(200).json({ collections });
+  }),
+);
+
+contentRouter.get(
+  "/character-collections/:collectionId",
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ collectionId: z.string().min(1) });
+    const { collectionId } = paramsSchema.parse(req.params);
+
+    const collection = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        coverImage: string | null;
+        order: number;
+        createdAt: Date;
+        updatedAt: Date;
+        characters: Array<{
+          id: string;
+          name: string;
+          slug: string;
+          imageUrl: string | null;
+          rarityLevel: string | null;
+        }> | null;
+      }>
+    >`
+      SELECT 
+        cc.id,
+        cc.name,
+        cc.description,
+        cc."coverImage",
+        cc."order",
+        cc."createdAt",
+        cc."updatedAt",
+        json_agg(
+          json_build_object(
+            'id', c.id,
+            'name', c.name,
+            'slug', c.slug,
+            'imageUrl', c."imageUrl",
+            'rarityLevel', c."rarityLevel"
+          ) ORDER BY cci."order"
+        ) FILTER (WHERE c.id IS NOT NULL) as characters
+      FROM "CharacterCollection" cc
+      LEFT JOIN "CharacterCollectionItem" cci ON cc.id = cci."collectionId"
+      LEFT JOIN "Character" c ON cci."characterId" = c.id
+      WHERE cc.id = ${collectionId}
+      GROUP BY cc.id
+    `;
+
+    if (!collection || collection.length === 0) {
+      return res.status(404).json({ error: "Collection not found" });
+    }
+
+    res.status(200).json({ collection: collection[0] });
+  }),
+);

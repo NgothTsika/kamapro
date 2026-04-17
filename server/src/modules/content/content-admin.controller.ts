@@ -1408,7 +1408,7 @@ contentAdminRouter.delete(
 
 // ---------- Characters ----------
 contentAdminRouter.get(
-  "/characters",
+  "/admin/characters",
   requireAuth,
   adminRoles,
   asyncHandler(async (_req, res) => {
@@ -1428,7 +1428,7 @@ contentAdminRouter.get(
 );
 
 contentAdminRouter.get(
-  "/characters/:characterId",
+  "/admin/characters/:characterId",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {
@@ -1454,7 +1454,7 @@ contentAdminRouter.get(
 );
 
 contentAdminRouter.post(
-  "/characters",
+  "/admin/characters",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {
@@ -1519,7 +1519,7 @@ contentAdminRouter.post(
 );
 
 contentAdminRouter.patch(
-  "/characters/:characterId",
+  "/admin/characters/:characterId",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {
@@ -1610,7 +1610,7 @@ contentAdminRouter.patch(
 );
 
 contentAdminRouter.delete(
-  "/characters/:characterId",
+  "/admin/characters/:characterId",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {
@@ -1635,7 +1635,7 @@ contentAdminRouter.delete(
 
 // ---------- Character translations ----------
 contentAdminRouter.get(
-  "/characters/:characterId/translations",
+  "/admin/characters/:characterId/translations",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {
@@ -1652,7 +1652,7 @@ contentAdminRouter.get(
 );
 
 contentAdminRouter.post(
-  "/characters/:characterId/translations",
+  "/admin/characters/:characterId/translations",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {
@@ -1787,7 +1787,7 @@ contentAdminRouter.delete(
 
 // ---------- Character Collections (Admin) ----------
 contentAdminRouter.get(
-  "/character-collections",
+  "/admin/character-collections",
   requireAuth,
   adminRoles,
   asyncHandler(async (_req, res) => {
@@ -1822,7 +1822,7 @@ contentAdminRouter.get(
 );
 
 contentAdminRouter.get(
-  "/character-collections/:collectionId",
+  "/admin/character-collections/:collectionId",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {
@@ -1880,7 +1880,7 @@ contentAdminRouter.get(
 );
 
 contentAdminRouter.post(
-  "/character-collections",
+  "/admin/character-collections",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {
@@ -1945,7 +1945,7 @@ contentAdminRouter.post(
 );
 
 contentAdminRouter.patch(
-  "/character-collections/:collectionId",
+  "/admin/character-collections/:collectionId",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {
@@ -2034,7 +2034,7 @@ contentAdminRouter.patch(
 );
 
 contentAdminRouter.delete(
-  "/character-collections/:collectionId",
+  "/admin/character-collections/:collectionId",
   requireAuth,
   adminRoles,
   asyncHandler(async (req, res) => {

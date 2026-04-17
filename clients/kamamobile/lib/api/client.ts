@@ -31,7 +31,10 @@ export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const fullUrl = `${API_BASE_URL}${path}`;
+  console.log(`[API Request] ${options.method ?? "GET"} ${fullUrl}`);
+
+  const response = await fetch(fullUrl, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
@@ -42,15 +45,20 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
+    let body: unknown;
     try {
-      const body = (await response.json()) as {
+      body = (await response.json()) as {
         error?: string;
         message?: string;
       };
-      message = body.error ?? body.message ?? message;
+      message = (body as any)?.error ?? (body as any)?.message ?? message;
     } catch {
       // ignore invalid response payload
     }
+    console.error(
+      `[API Error] ${fullUrl}: ${response.status} - ${message}`,
+      body,
+    );
     throw new ApiError(response.status, message);
   }
 

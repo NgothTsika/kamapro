@@ -2,6 +2,7 @@ import { apiRequest } from "@/lib/api/client";
 import type {
   Character,
   Category,
+  CharacterCollection,
   LessonDetail,
   LessonFull,
   LessonSummary,
@@ -28,6 +29,24 @@ export async function getCharacters(language?: string): Promise<Character[]> {
     `/content/characters${query}`,
   );
   return response.characters;
+}
+
+export async function getCharacterCollections(): Promise<
+  CharacterCollection[]
+> {
+  const response = await apiRequest<{ collections: CharacterCollection[] }>(
+    "/content/character-collections",
+  );
+  return response.collections;
+}
+
+export async function getCharacterCollection(
+  collectionId: string,
+): Promise<CharacterCollection> {
+  const response = await apiRequest<{ collection: CharacterCollection }>(
+    `/content/character-collections/${collectionId}`,
+  );
+  return response.collection;
 }
 
 export async function getLessons(language?: string): Promise<LessonSummary[]> {

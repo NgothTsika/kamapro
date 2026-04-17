@@ -97,6 +97,7 @@ app.get("/ready", (_req, res) => {
 });
 
 // API Routes
+// Trigger redeploy to ensure character-collections endpoint is live
 app.use("/", apiRouter);
 
 // 404 Handler

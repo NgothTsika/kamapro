@@ -2,8 +2,6 @@ import {
   getCharacterCollections,
   getCategories,
   getDashboard,
-  getTopics,
-  getCharacters,
   getInProgressLessons,
   type Category,
   type Character,
@@ -15,19 +13,10 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Colors } from "@/constants/theme";
 import { useEffect, useMemo, useState } from "react";
-import {
-  FlatList,
-  Text,
-  View,
-  ScrollView,
-  ImageBackground,
-} from "react-native";
+import { FlatList, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { CollectionCard } from "@/components/CollectionCard";
-import { DiveRightBackSection } from "@/components/DiveRightBackSection";
-import { ExploreByCategorySection } from "@/components/ExploreByCategorySection";
-import { ViewAllStoriesSection } from "@/components/ViewAllStoriesSection";
 
 export default function HomeScreen() {
   const { token, user } = useAuth();
@@ -36,10 +25,6 @@ export default function HomeScreen() {
   const [hearts, setHearts] = useState(0);
   const [streak, setStreak] = useState(0);
   const [collections, setCollections] = useState<CharacterCollection[]>([]);
-  const [inProgressLessons, setInProgressLessons] = useState<
-    LessonProgressDetail[]
-  >([]);
-  const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -74,32 +59,6 @@ export default function HomeScreen() {
           // Continue with empty collections - don't use mock data
           setCollections([]);
         }
-
-        try {
-          console.log("Fetching categories...");
-          const categoryItems = await getCategories();
-          console.log("Categories fetched successfully:", categoryItems);
-          setCategories(categoryItems);
-        } catch (err) {
-          console.error("Categories fetch failed:", err);
-          // Continue with empty categories
-          setCategories([]);
-        }
-
-        try {
-          console.log("Fetching in progress lessons...");
-          const progressLessons = await getInProgressLessons(token);
-          console.log(
-            "Progress lessons fetched successfully:",
-            progressLessons,
-          );
-          setInProgressLessons(progressLessons.slice(0, 5));
-        } catch (err) {
-          console.error("Progress lessons fetch failed:", err);
-          // Continue with empty lessons
-          setInProgressLessons([]);
-        }
-
         console.log("State updated with fetched data");
       } catch (error) {
         console.error("Unexpected error loading home data:", error);

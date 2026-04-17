@@ -5,7 +5,7 @@ import {
   logout,
   registerWithEmail,
   type UserProfile,
-} from "@/lib/api";
+} from "@/lib";
 import { clearToken, loadToken, saveToken } from "@/lib/auth/token-storage";
 import { useRouter } from "expo-router";
 import React, {

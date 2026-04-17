@@ -1,4 +1,4 @@
-import type { LessonSummary } from "@/lib/api";
+import type { LessonSummary } from "@/lib";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Colors } from "@/constants/theme";
 import { Pressable, Text, View } from "react-native";

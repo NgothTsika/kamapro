@@ -4,7 +4,7 @@ import {
   getTopics,
   quickPlayMatch,
   type Topic,
-} from "@/lib/api";
+} from "@/lib";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Colors } from "@/constants/theme";

@@ -1,5 +1,5 @@
 import { LessonCard } from "@/components/lesson";
-import { getLessons, type LessonSummary } from "@/lib/api";
+import { getLessons, type LessonSummary } from "@/lib";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Colors } from "@/constants/theme";
 import { router } from "expo-router";

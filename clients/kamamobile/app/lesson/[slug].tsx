@@ -17,7 +17,7 @@ import {
   submitPollVote,
   type LessonFull,
   type LessonQuizQuestion,
-} from "@/lib/api";
+} from "@/lib";
 import {
   defaultTrueFalseOptions,
   normalizeOptionImages,

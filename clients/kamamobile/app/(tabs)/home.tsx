@@ -4,12 +4,13 @@ import {
   getDashboard,
   getTopics,
   getCharacters,
+  getInProgressLessons,
   type Category,
   type Character,
   type Topic,
   type CharacterCollection,
-} from "@/lib/api";
-import { getInProgressLessons } from "@/lib/api/progress";
+  type LessonProgressDetail,
+} from "@/lib";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Colors } from "@/constants/theme";
@@ -27,7 +28,6 @@ import { CollectionCard } from "@/components/CollectionCard";
 import { DiveRightBackSection } from "@/components/DiveRightBackSection";
 import { ExploreByCategorySection } from "@/components/ExploreByCategorySection";
 import { ViewAllStoriesSection } from "@/components/ViewAllStoriesSection";
-import type { LessonProgressDetail } from "@/lib/api/progress";
 
 export default function HomeScreen() {
   const { token, user } = useAuth();

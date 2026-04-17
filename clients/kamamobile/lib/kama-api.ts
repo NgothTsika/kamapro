@@ -1,0 +1,420 @@
+import Constants from "expo-constants";
+import type {
+  Category,
+  Character,
+  CharacterCollection,
+  LessonDetail,
+  LessonFull,
+  LessonSummary,
+  Topic,
+  TopicQuiz,
+  AuthResponse,
+  UserProfile,
+  ApiEnvelope,
+  DashboardData,
+  HeartState,
+  StreakState,
+  MatchSummary,
+} from "@/lib/api/types";
+
+type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+
+type RequestOptions = {
+  method?: HttpMethod;
+  token?: string | null;
+  body?: unknown;
+};
+
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_API_BASE_URL;
+
+console.log("[API Client] Configured API_BASE_URL:", API_BASE_URL);
+
+async function apiRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const fullUrl = `${API_BASE_URL}${path}`;
+  console.log(`[API Request] ${options.method ?? "GET"} ${fullUrl}`);
+
+  const response = await fetch(fullUrl, {
+    method: options.method ?? "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    let body: unknown;
+    try {
+      body = (await response.json()) as {
+        error?: string;
+        message?: string;
+      };
+      message = (body as any)?.error ?? (body as any)?.message ?? message;
+    } catch {
+      // ignore invalid response payload
+    }
+    console.error(
+      `[API Error] ${fullUrl}: ${response.status} - ${message}`,
+      body,
+    );
+    throw new ApiError(response.status, message);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return (await response.json()) as T;
+}
+
+// ==================== Auth ====================
+
+export async function loginWithEmail(input: {
+  email: string;
+  password: string;
+  language?: string;
+}): Promise<AuthResponse> {
+  return apiRequest<AuthResponse>("/auth/email", {
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function registerWithEmail(input: {
+  username: string;
+  email: string;
+  password: string;
+  language?: string;
+}): Promise<AuthResponse> {
+  return apiRequest<AuthResponse>("/auth/register", {
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function loginWithGoogle(input: {
+  idToken: string;
+  accessToken: string;
+  language?: string;
+}): Promise<AuthResponse> {
+  return apiRequest<AuthResponse>("/auth/google", {
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function getMe(token: string): Promise<UserProfile> {
+  const response = await apiRequest<{ user: UserProfile }>("/auth/me", {
+    token,
+  });
+  return response.user;
+}
+
+export async function logout(token: string): Promise<void> {
+  await apiRequest<void>("/auth/logout", {
+    method: "POST",
+    token,
+  });
+}
+
+// ==================== Content ====================
+
+export async function getCategories(language?: string): Promise<Category[]> {
+  const query = language ? `?language=${encodeURIComponent(language)}` : "";
+  const response = await apiRequest<{ categories: Category[] }>(
+    `/content/categories${query}`,
+  );
+  return response.categories;
+}
+
+export async function getTopics(): Promise<Topic[]> {
+  const response = await apiRequest<{ topics: Topic[] }>("/content/topics");
+  return response.topics;
+}
+
+export async function getCharacters(language?: string): Promise<Character[]> {
+  const query = language ? `?language=${encodeURIComponent(language)}` : "";
+  const response = await apiRequest<{ characters: Character[] }>(
+    `/content/characters${query}`,
+  );
+  return response.characters;
+}
+
+export async function getCharacterCollections(): Promise<
+  CharacterCollection[]
+> {
+  const response = await apiRequest<{ collections: CharacterCollection[] }>(
+    "/content/character-collections",
+  );
+  return response.collections;
+}
+
+export async function getCharacterCollection(
+  collectionId: string,
+): Promise<CharacterCollection> {
+  const response = await apiRequest<{ collection: CharacterCollection }>(
+    `/content/character-collections/${collectionId}`,
+  );
+  return response.collection;
+}
+
+export async function getLessons(language?: string): Promise<LessonSummary[]> {
+  const query = language ? `?language=${encodeURIComponent(language)}` : "";
+  const response = await apiRequest<{ lessons: LessonSummary[] }>(
+    `/content/lessons${query}`,
+  );
+  return response.lessons;
+}
+
+export async function getLesson(
+  lessonId: string,
+  language?: string,
+): Promise<LessonDetail> {
+  const query = language ? `?language=${encodeURIComponent(language)}` : "";
+  const response = await apiRequest<{ lesson: LessonDetail }>(
+    `/content/lessons/${lessonId}${query}`,
+  );
+  return response.lesson;
+}
+
+export async function getLessonBySlug(
+  slug: string,
+  language?: string,
+): Promise<LessonFull> {
+  const query = language ? `?language=${encodeURIComponent(language)}` : "";
+  const response = await apiRequest<{ lesson: LessonFull }>(
+    `/content/lessons/slug/${slug}${query}`,
+  );
+  return response.lesson;
+}
+
+export async function getTopicQuizzes(topicId: string): Promise<TopicQuiz[]> {
+  const response = await apiRequest<{ quizzes: TopicQuiz[] }>(
+    `/content/topics/${topicId}/quizzes`,
+  );
+  return response.quizzes;
+}
+
+export async function getRandomTopicQuizIds(
+  topicId: string,
+  limit: number = 20,
+): Promise<string[]> {
+  const response = await apiRequest<{ quizIds: string[] }>(
+    `/content/topics/${topicId}/quizzes/random?limit=${limit}`,
+  );
+  return response.quizIds;
+}
+
+export async function submitPollVote(
+  token: string,
+  pollId: string,
+  selectedOption: number,
+): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/content/polls/${pollId}/vote`, {
+    method: "POST",
+    token,
+    body: { selectedOption },
+  });
+}
+
+export async function submitAudioPollVote(
+  token: string,
+  pollId: string,
+  selectedOption: number,
+): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/content/audio-polls/${pollId}/vote`, {
+    method: "POST",
+    token,
+    body: { selectedOption },
+  });
+}
+
+// ==================== Gamification ====================
+
+export async function getHearts(token: string): Promise<HeartState> {
+  const response = await apiRequest<ApiEnvelope<HeartState>>(
+    "/gamification/hearts",
+    {
+      token,
+    },
+  );
+  return response.data;
+}
+
+export async function getStreak(token: string): Promise<StreakState> {
+  const response = await apiRequest<ApiEnvelope<StreakState>>(
+    "/gamification/streaks",
+    { token },
+  );
+  return response.data;
+}
+
+export async function getDashboard(token: string): Promise<DashboardData> {
+  const response = await apiRequest<ApiEnvelope<DashboardData>>(
+    "/gamification/dashboard",
+    { token },
+  );
+  return response.data;
+}
+
+// ==================== Progress ====================
+
+export type LessonProgress = {
+  lessonId: string;
+  position?: number;
+  completedAt?: string | null;
+};
+
+export type LessonProgressDetail = {
+  id: string;
+  lessonId: string;
+  userId: string;
+  chapterId: string;
+  position?: number;
+  updatedAt: string;
+  lesson: {
+    id: string;
+    slug: string;
+    title: string;
+    description?: string | null;
+    coverImage?: string | null;
+    xpReward?: number;
+  };
+  chapter: {
+    id: string;
+    title: string;
+    order: number;
+  };
+};
+
+export async function completeLesson(
+  token: string,
+  lessonId: string,
+): Promise<{
+  ok: boolean;
+  xpEarned: number;
+  alreadyCompleted: boolean;
+}> {
+  return apiRequest<{
+    ok: boolean;
+    xpEarned: number;
+    alreadyCompleted: boolean;
+  }>(`/progress/lessons/${lessonId}/complete`, {
+    method: "POST",
+    token,
+    body: {},
+  });
+}
+
+export async function updateLessonProgress(
+  token: string,
+  lessonId: string,
+  position: number,
+): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/progress/lessons/${lessonId}`, {
+    method: "PATCH",
+    token,
+    body: { position },
+  });
+}
+
+export async function getInProgressLessons(
+  token: string,
+): Promise<LessonProgressDetail[]> {
+  const response = await apiRequest<{ progress: LessonProgressDetail[] }>(
+    `/progress/lessons/in-progress`,
+    {
+      token,
+    },
+  );
+  return response.progress;
+}
+
+// ==================== Game ====================
+
+export async function quickPlayMatch(input: {
+  token: string;
+  quizPool: string[];
+  topicId?: string;
+  maxRounds?: number;
+}): Promise<{ isNew: boolean; match: MatchSummary }> {
+  const { token, ...body } = input;
+  return apiRequest<{ isNew: boolean; match: MatchSummary }>(
+    "/game/matches/quickplay",
+    {
+      method: "POST",
+      token,
+      body,
+    },
+  );
+}
+
+// ==================== Quiz ====================
+
+export async function startQuizSession(
+  token: string,
+  quizId: string,
+): Promise<{ sessionId: string }> {
+  return apiRequest<{ sessionId: string }>("/quiz/sessions", {
+    method: "POST",
+    token,
+    body: { quizId },
+  });
+}
+
+export async function answerQuiz(
+  token: string,
+  sessionId: string,
+  selectedOption: number,
+): Promise<{
+  attempt?: { isCorrect: boolean };
+  heartsRemaining: number;
+  completedAt: string | null;
+  passed: boolean | null;
+}> {
+  return apiRequest<{
+    attempt?: { isCorrect: boolean };
+    heartsRemaining: number;
+    completedAt: string | null;
+    passed: boolean | null;
+  }>(`/quiz/sessions/${sessionId}/answer`, {
+    method: "POST",
+    token,
+    body: { selectedOption },
+  });
+}
+
+// ==================== Feedback ====================
+
+export async function submitLessonFeedback(input: {
+  token: string;
+  lessonId: string;
+  rating: number;
+  comment?: string;
+}): Promise<{
+  feedback: { id: string; rating: number; comment?: string };
+}> {
+  const { token, lessonId, rating, comment } = input;
+  return apiRequest<{
+    feedback: { id: string; rating: number; comment?: string };
+  }>(`/feedback/lessons/${lessonId}`, {
+    method: "POST",
+    token,
+    body: { rating, comment },
+  });
+}

@@ -23,20 +23,14 @@ export function CollectionCard({
   return (
     <View
       style={{
-        backgroundColor: colors.background,
-        borderRadius: 16,
-        paddingVertical: 16,
-        paddingHorizontal: 0,
-        marginHorizontal: 16,
-        marginBottom: 20,
-        gap: 12,
+        backgroundColor: colors.backgroundSecondary,
       }}
     >
       {/* Header with title and description */}
-      <View style={{ paddingHorizontal: 16, gap: 4 }}>
+      <View style={{ paddingHorizontal: 16, gap: 4, paddingVertical: 16 }}>
         <Text
           style={{
-            color: colors.text,
+            color: colors.textSecondary,
             fontSize: 18,
             fontWeight: "700",
           }}
@@ -60,7 +54,7 @@ export function CollectionCard({
       </View>
 
       {/* Characters carousel */}
-      {collection.characters && collection.characters.length > 0 && (
+      {collection.characters && collection.characters.length > 0 ? (
         <View>
           <FlatList
             data={collection.characters}
@@ -81,12 +75,36 @@ export function CollectionCard({
             )}
           />
         </View>
+      ) : (
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            backgroundColor: colors.surface,
+            marginHorizontal: 16,
+            borderRadius: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text
+            style={{
+              color: colors.textSecondary,
+              fontSize: 13,
+              fontWeight: "500",
+              textAlign: "center",
+            }}
+          >
+            No characters in this collection yet
+          </Text>
+        </View>
       )}
 
       {/* View collection button */}
       <Pressable
         style={{
+          marginTop: 12,
           marginHorizontal: 16,
+          marginBottom: 16,
           paddingVertical: 12,
           paddingHorizontal: 16,
           backgroundColor: colors.primary,

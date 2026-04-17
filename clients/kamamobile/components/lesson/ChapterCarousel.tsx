@@ -1,4 +1,4 @@
-import type { LessonChapter } from "@/lib/api/types";
+import type { LessonChapter } from "@/lib";
 import { useCallback, useRef } from "react";
 import {
   Dimensions,
@@ -87,15 +87,36 @@ export function ChapterCarousel({
               minHeight: 220,
             }}
           >
-            <Text style={{ color: "#f8d568", fontSize: 12, fontWeight: "600" }}>Chapter</Text>
-            <Text style={{ color: "white", fontSize: 20, fontWeight: "700", marginTop: 4 }}>{item.title}</Text>
-            <Text style={{ color: "#e5d9ca", marginTop: 10, lineHeight: 24 }} numberOfLines={12}>
+            <Text style={{ color: "#f8d568", fontSize: 12, fontWeight: "600" }}>
+              Chapter
+            </Text>
+            <Text
+              style={{
+                color: "white",
+                fontSize: 20,
+                fontWeight: "700",
+                marginTop: 4,
+              }}
+            >
+              {item.title}
+            </Text>
+            <Text
+              style={{ color: "#e5d9ca", marginTop: 10, lineHeight: 24 }}
+              numberOfLines={12}
+            >
               {item.body || lessonContent || "Story continues…"}
             </Text>
           </View>
         )}
       />
-      <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginTop: 12 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "center",
+          gap: 8,
+          marginTop: 12,
+        }}
+      >
         {items.map((item, i) => (
           <Pressable
             key={item.id}

@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, FlatList } from "react-native";
 import { Colors } from "@/constants/theme";
 import { CategoryCard } from "./CategoryCard";
-import type { Category } from "@/lib/api/types";
+import type { Category } from "@/lib";
 
 interface ExploreByCategorySectionProps {
   categories: Category[];

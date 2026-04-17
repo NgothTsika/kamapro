@@ -3,7 +3,7 @@ import { View, Text, Pressable, FlatList, ImageBackground } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Colors } from "@/constants/theme";
 import { CharacterCard } from "./CharacterCard";
-import type { CharacterCollection } from "@/lib/api/types";
+import type { CharacterCollection } from "@/lib";
 
 interface CollectionCardProps {
   collection: CharacterCollection;

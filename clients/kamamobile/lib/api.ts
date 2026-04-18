@@ -55,6 +55,18 @@ export type Character = {
   description?: string;
   imageUrl?: string | null;
   rarityLevel?: string | null;
+  story?: string;
+  categories?: Array<{
+    category: {
+      id: string;
+      slug: string;
+      name: string;
+    };
+  }>;
+  unlockLesson?: {
+    id: string;
+    slug: string;
+  };
 };
 
 export type CharacterInCollection = {
@@ -335,6 +347,17 @@ export async function getCharacters(language?: string): Promise<Character[]> {
     `/content/characters${query}`,
   );
   return response.characters;
+}
+
+export async function getCharacterBySlug(
+  slug: string,
+  language?: string,
+): Promise<Character> {
+  const query = language ? `?language=${encodeURIComponent(language)}` : "";
+  const response = await apiRequest<{ character: Character }>(
+    `/content/characters/slug/${slug}${query}`,
+  );
+  return response.character;
 }
 
 export async function getCharacterCollections(): Promise<

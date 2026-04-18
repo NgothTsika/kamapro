@@ -18,6 +18,8 @@ interface CharacterCardProps {
   onPress?: () => void;
 }
 
+const BACKGROUND_IMAGE = require("@/assets/images/background.png");
+
 export function CharacterCard({
   id,
   name,
@@ -48,24 +50,37 @@ export function CharacterCard({
   return (
     <Pressable
       style={{
-        width: 110,
+        width: 200,
         borderRadius: 12,
+        marginHorizontal: 10,
         overflow: "hidden",
-        gap: 8,
+        gap: 16,
       }}
       onPress={onPress}
     >
       <ImageBackground
-        source={{
-          uri: imageUrl || "https://via.placeholder.com/110x130",
-        }}
+        source={BACKGROUND_IMAGE}
         style={{
           width: "100%",
-          height: 130,
+          height: 300,
           justifyContent: "flex-end",
         }}
-        imageStyle={{ opacity: 0.85 }}
+        imageStyle={{ opacity: 0.9 }}
       >
+        {/* Character image overlay */}
+        {imageUrl && (
+          <ImageBackground
+            source={{ uri: imageUrl }}
+            style={{
+              width: "100%",
+              height: "100%",
+              position: "absolute",
+              top: 0,
+              left: 0,
+            }}
+            imageStyle={{ opacity: 0.7 }}
+          />
+        )}
         {/* Dark overlay */}
         <View
           style={{

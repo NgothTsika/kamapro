@@ -9,7 +9,7 @@ interface CollectionCardProps {
   collection: CharacterCollection;
   colorScheme: "light" | "dark";
   onViewCollection?: (collectionId: string) => void;
-  onCharacterPress?: (characterId: string) => void;
+  onCharacterPress?: (character: { id: string; slug: string }) => void;
 }
 
 export function CollectionCard({
@@ -27,7 +27,7 @@ export function CollectionCard({
       }}
     >
       {/* Header with title and description */}
-      <View style={{ paddingHorizontal: 16, gap: 4, paddingVertical: 16 }}>
+      <View style={{ gap: 4, paddingVertical: 12, paddingHorizontal: 12 }}>
         <Text
           style={{
             color: colors.textSecondary,
@@ -62,7 +62,7 @@ export function CollectionCard({
             horizontal
             scrollEnabled={true}
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
+            contentContainerStyle={{ gap: 10 }}
             renderItem={({ item }) => (
               <CharacterCard
                 id={item.id}
@@ -70,7 +70,9 @@ export function CollectionCard({
                 imageUrl={item.imageUrl}
                 rarityLevel={item.rarityLevel}
                 colorScheme={colorScheme}
-                onPress={() => onCharacterPress?.(item.id)}
+                onPress={() =>
+                  onCharacterPress?.({ id: item.id, slug: item.slug })
+                }
               />
             )}
           />

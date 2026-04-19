@@ -681,7 +681,6 @@ async function main() {
         "A fictional guide that helps players learn African history.",
       story:
         "Kama collects stories, facts, and legends from across the continent.",
-      unlockLessonId: lesson.id,
       rarityLevel: "common",
     },
     create: {
@@ -695,7 +694,6 @@ async function main() {
       inventionImage: null,
       xpThreshold: null,
       rarityLevel: "common",
-      unlockLessonId: lesson.id,
       categories: {
         create: [
           {
@@ -703,6 +701,22 @@ async function main() {
           },
         ],
       },
+    },
+  });
+
+  // Assign the intro lesson to Kama character
+  await prisma.characterLesson.upsert({
+    where: {
+      lessonId_characterId: {
+        lessonId: lesson.id,
+        characterId: character.id,
+      },
+    },
+    update: {},
+    create: {
+      lessonId: lesson.id,
+      characterId: character.id,
+      order: 0,
     },
   });
 
@@ -765,84 +779,166 @@ async function main() {
 
   console.log(`✅ Created ${testUsers.length} test users`);
 
-  // ==================== MORE LESSONS ====================
-  console.log("📚 Creating more lessons...");
+  // ==================== CHARACTER-LESSON PAIRS ====================
+  // Flow: Create Character → Create Lesson → Assign Lesson to Character
+  console.log("🎭📚 Creating character-lesson pairs...");
 
   const egyptCategory = await prisma.category.findUnique({
     where: { slug: "ancient-egypt" },
   });
 
-  const lessonsData = [
+  const characterLessonPairs = [
     {
-      title: "Ancient Egypt: The Nile Civilization",
-      slug: "ancient-egypt-nile",
-      description: "Discover the wonders of Egyptian civilization",
-      content: "# Ancient Egypt\n\nEgypt was built on the Nile River...",
-      hook: "Explore pyramids and pharaohs",
+      characterName: "Nefertiti",
+      characterSlug: "nefertiti-queen",
+      characterDesc: "Egyptian queen known for her beauty and power",
+      characterStory: "Nefertiti was one of Egypt's most influential queens",
+      entityType: "person",
+      personType: "leader",
+      country: "Egypt",
+      rarityLevel: "rare",
+      lessonTitle: "Nefertiti: Queen of Egypt",
+      lessonSlug: "nefertiti-queen-lesson",
+      lessonDesc: "The story of one of Egypt's greatest queens",
+      lessonContent:
+        "# Nefertiti\n\nNefertiti ruled Egypt with wisdom and beauty...",
+      lessonHook: "Discover the power of Queen Nefertiti",
       xpReward: 25,
-      categoryId: egyptCategory?.id || category.id,
-      topicId: topic.id,
-      published: true,
     },
     {
-      title: "Mansa Musa: The Richest Man in History",
-      slug: "mansa-musa-history",
-      description: "The legendary Mali emperor and his pilgrimage",
-      content: "# Mansa Musa\n\nOne of the wealthiest men ever...",
-      hook: "Discover Mali's golden age",
+      characterName: "Haile Selassie",
+      characterSlug: "haile-selassie-emperor",
+      characterDesc: "Emperor of Ethiopia and pan-African icon",
+      characterStory:
+        "Haile Selassie modernized Ethiopia and championed African unity",
+      entityType: "person",
+      personType: "leader",
+      country: "Ethiopia",
+      rarityLevel: "rare",
+      lessonTitle: "Haile Selassie: The Lion of Judah",
+      lessonSlug: "haile-selassie-emperor-lesson",
+      lessonDesc: "The emperor who led Ethiopia to independence",
+      lessonContent:
+        "# Haile Selassie\n\nHaile Selassie was a visionary leader...",
+      lessonHook: "Learn about Ethiopia's legendary emperor",
       xpReward: 30,
-      categoryId: category.id,
-      topicId: topic.id,
-      published: true,
     },
     {
-      title: "Hatshepsut: Female Pharaoh",
-      slug: "hatshepsut-pharaoh",
-      description: "One of Egypt's greatest rulers",
-      content: "# Hatshepsut\n\nHatshepsut ruled Egypt with wisdom...",
-      hook: "Learn about a powerful woman leader",
+      characterName: "The Great Zimbabwe",
+      characterSlug: "great-zimbabwe-place",
+      characterDesc: "Ancient stone city in southern Africa",
+      characterStory: "Great Zimbabwe was a thriving trade center",
+      entityType: "place",
+      placeType: "monument",
+      country: "Zimbabwe",
+      rarityLevel: "legendary",
+      lessonTitle: "Great Zimbabwe: Ancient Trade Hub",
+      lessonSlug: "great-zimbabwe-lesson",
+      lessonDesc: "Explore the mysteries of Great Zimbabwe",
+      lessonContent:
+        "# Great Zimbabwe\n\nGreat Zimbabwe was a powerful trading empire...",
+      lessonHook: "Uncover the secrets of ancient Africa",
+      xpReward: 28,
+    },
+    {
+      characterName: "Zumbi dos Palmares",
+      characterSlug: "zumbi-palmares",
+      characterDesc: "Leader of Palmares, a free Black settlement in Brazil",
+      characterStory: "Zumbi led resistance against slavery",
+      entityType: "person",
+      personType: "activist",
+      country: "Brazil",
+      rarityLevel: "rare",
+      lessonTitle: "Zumbi: Resistance and Freedom",
+      lessonSlug: "zumbi-palmares-lesson",
+      lessonDesc: "The story of a legendary freedom fighter",
+      lessonContent:
+        "# Zumbi dos Palmares\n\nZumbi fought against enslavement...",
+      lessonHook: "Celebrate a hero of liberation",
       xpReward: 25,
-      categoryId: egyptCategory?.id || category.id,
-      topicId: topic.id,
-      published: true,
     },
   ];
 
   const createdLessons: Awaited<ReturnType<typeof prisma.lesson.upsert>>[] = [];
-  for (const lessonData of lessonsData) {
-    const createdLesson = await prisma.lesson.upsert({
-      where: { slug: lessonData.slug },
+
+  for (const pair of characterLessonPairs) {
+    // 1. Create Character
+    const createdCharacter = await prisma.character.upsert({
+      where: { slug: pair.characterSlug },
       update: {},
       create: {
-        title: lessonData.title,
-        slug: lessonData.slug,
-        description: lessonData.description,
-        content: lessonData.content,
-        hook: lessonData.hook,
-        xpReward: lessonData.xpReward,
-        categoryId: lessonData.categoryId,
-        topicId: lessonData.topicId,
-        published: lessonData.published,
+        name: pair.characterName,
+        slug: pair.characterSlug,
+        description: pair.characterDesc,
+        story: pair.characterStory,
+        entityType: pair.entityType,
+        personType: pair.personType,
+        placeType: pair.placeType,
+        country: pair.country,
+        rarityLevel: pair.rarityLevel,
+        imageUrl: null,
+        inventionImage: null,
+        xpThreshold: null,
+        categories: {
+          create: [
+            {
+              categoryId:
+                pair.entityType === "place"
+                  ? egyptCategory?.id || category.id
+                  : category.id,
+            },
+          ],
+        },
+      },
+    });
+
+    // 2. Create Lesson for this Character
+    const createdLesson = await prisma.lesson.upsert({
+      where: { slug: pair.lessonSlug },
+      update: {},
+      create: {
+        title: pair.lessonTitle,
+        slug: pair.lessonSlug,
+        description: pair.lessonDesc,
+        content: pair.lessonContent,
+        hook: pair.lessonHook,
+        xpReward: pair.xpReward,
+        categoryId:
+          pair.entityType === "place"
+            ? egyptCategory?.id || category.id
+            : category.id,
+        topicId: topic.id,
+        published: true,
       },
     });
     createdLessons.push(createdLesson);
-  }
 
-  console.log(`✅ Created ${createdLessons.length} lessons`);
+    // 3. Assign Lesson to Character
+    await prisma.characterLesson.upsert({
+      where: {
+        lessonId_characterId: {
+          lessonId: createdLesson.id,
+          characterId: createdCharacter.id,
+        },
+      },
+      update: {},
+      create: {
+        lessonId: createdLesson.id,
+        characterId: createdCharacter.id,
+        order: 0,
+      },
+    });
 
-  // ==================== MORE QUIZZES ====================
-  console.log("🎯 Creating more quizzes...");
-
-  for (const lesson of createdLessons) {
+    // 4. Create Quizzes for this Lesson
     const existingQuiz = await prisma.quiz.findFirst({
-      where: { lessonId: lesson.id },
+      where: { lessonId: createdLesson.id },
     });
 
     if (!existingQuiz) {
       await prisma.quiz.create({
         data: {
-          lessonId: lesson.id,
-          question: `What was the main achievement of ${lesson.title}?`,
+          lessonId: createdLesson.id,
+          question: `What was the main achievement of ${pair.characterName}?`,
           options: [
             "Cultural advancement",
             "Military strength",
@@ -851,7 +947,7 @@ async function main() {
           ],
           correctOption: 3,
           explanation:
-            "This civilization achieved greatness across multiple fronts.",
+            "This historical figure achieved greatness across multiple fronts.",
           order: 0,
           heartLimit: 4,
           difficulty: "medium",
@@ -863,8 +959,8 @@ async function main() {
 
       await prisma.quiz.create({
         data: {
-          lessonId: lesson.id,
-          question: `Is ${lesson.title} still relevant today?`,
+          lessonId: createdLesson.id,
+          question: `Is ${pair.characterName} still relevant today?`,
           options: ["True", "False"],
           correctOption: 0,
           explanation: "Yes, these historical lessons continue to inspire us.",
@@ -879,80 +975,9 @@ async function main() {
     }
   }
 
-  console.log(`✅ Created quizzes for lessons`);
-
-  // ==================== MORE CHARACTERS ====================
-  console.log("🎭 Creating more characters...");
-
-  const charactersData = [
-    {
-      name: "Nefertiti",
-      slug: "nefertiti-queen",
-      description: "Egyptian queen known for her beauty and power",
-      story: "Nefertiti was one of Egypt's most influential queens",
-      entityType: "person",
-      personType: "leader",
-      country: "Egypt",
-      rarityLevel: "rare",
-    },
-    {
-      name: "Haile Selassie",
-      slug: "haile-selassie-emperor",
-      description: "Emperor of Ethiopia and pan-African icon",
-      story: "Haile Selassie modernized Ethiopia and championed African unity",
-      entityType: "person",
-      personType: "leader",
-      country: "Ethiopia",
-      rarityLevel: "rare",
-    },
-    {
-      name: "The Great Zimbabwe",
-      slug: "great-zimbabwe-place",
-      description: "Ancient stone city in southern Africa",
-      story: "Great Zimbabwe was a thriving trade center",
-      entityType: "place",
-      placeType: "monument",
-      country: "Zimbabwe",
-      rarityLevel: "legendary",
-    },
-    {
-      name: "Zumbi dos Palmares",
-      slug: "zumbi-palmares",
-      description: "Leader of Palmares, a free Black settlement in Brazil",
-      story: "Zumbi led resistance against slavery",
-      entityType: "person",
-      personType: "activist",
-      country: "Brazil",
-      rarityLevel: "rare",
-    },
-  ];
-
-  for (const charData of charactersData) {
-    await prisma.character.upsert({
-      where: { slug: charData.slug },
-      update: {},
-      create: {
-        name: charData.name,
-        slug: charData.slug,
-        description: charData.description,
-        story: charData.story,
-        entityType: charData.entityType,
-        personType: charData.personType,
-        placeType: charData.placeType,
-        country: charData.country,
-        rarityLevel: charData.rarityLevel,
-        categories: {
-          create: [
-            {
-              categoryId: category.id,
-            },
-          ],
-        },
-      },
-    });
-  }
-
-  console.log(`✅ Created ${charactersData.length} characters`);
+  console.log(
+    `✅ Created ${characterLessonPairs.length} character-lesson pairs`,
+  );
 
   // ==================== ACHIEVEMENTS ====================
   console.log("🏆 Creating achievements...");

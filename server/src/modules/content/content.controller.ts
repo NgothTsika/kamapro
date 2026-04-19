@@ -468,7 +468,19 @@ contentRouter.get(
             category: { select: { id: true, slug: true, name: true } },
           },
         },
-        unlockLesson: { select: { id: true, slug: true } },
+        lessons: {
+          orderBy: { order: "asc" },
+          include: {
+            lesson: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                description: true,
+              },
+            },
+          },
+        },
         translations: language
           ? {
               where: { language },
@@ -487,15 +499,28 @@ contentRouter.get(
         ? character.translations[0]
         : null;
 
+    // Flatten lessons array to match client type expectations
+    const flattenedLessons = (character.lessons || []).map((cl: any) => ({
+      id: cl.lesson.id,
+      slug: cl.lesson.slug,
+      title: cl.lesson.title,
+      description: cl.lesson.description,
+      order: cl.order,
+    }));
+
     res.status(200).json({
       character: translation
         ? {
             ...character,
+            lessons: flattenedLessons,
             name: translation.name,
             description: translation.description,
             story: translation.story,
           }
-        : character,
+        : {
+            ...character,
+            lessons: flattenedLessons,
+          },
     });
   }),
 );
@@ -516,7 +541,19 @@ contentRouter.get(
             category: { select: { id: true, slug: true, name: true } },
           },
         },
-        unlockLesson: { select: { id: true, slug: true } },
+        lessons: {
+          orderBy: { order: "asc" },
+          include: {
+            lesson: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                description: true,
+              },
+            },
+          },
+        },
         translations: language
           ? {
               where: { language },
@@ -535,15 +572,28 @@ contentRouter.get(
         ? character.translations[0]
         : null;
 
+    // Flatten lessons array to match client type expectations
+    const flattenedLessons = (character.lessons || []).map((cl: any) => ({
+      id: cl.lesson.id,
+      slug: cl.lesson.slug,
+      title: cl.lesson.title,
+      description: cl.lesson.description,
+      order: cl.order,
+    }));
+
     res.status(200).json({
       character: translation
         ? {
             ...character,
+            lessons: flattenedLessons,
             name: translation.name,
             description: translation.description,
             story: translation.story,
           }
-        : character,
+        : {
+            ...character,
+            lessons: flattenedLessons,
+          },
     });
   }),
 );

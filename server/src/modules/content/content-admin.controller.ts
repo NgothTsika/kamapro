@@ -1420,7 +1420,11 @@ contentAdminRouter.get(
             category: { select: { id: true, name: true, slug: true } },
           },
         },
-        unlockLesson: { select: { id: true, title: true, slug: true } },
+        lessons: {
+          include: {
+            lesson: { select: { id: true, title: true, slug: true } },
+          },
+        },
       },
     });
     res.status(200).json({ characters });
@@ -1443,7 +1447,11 @@ contentAdminRouter.get(
             category: { select: { id: true, name: true, slug: true } },
           },
         },
-        unlockLesson: { select: { id: true, title: true, slug: true } },
+        lessons: {
+          include: {
+            lesson: { select: { id: true, title: true, slug: true } },
+          },
+        },
         translations: { orderBy: [{ language: "asc" }, { createdAt: "desc" }] },
       },
     });
@@ -1468,7 +1476,6 @@ contentAdminRouter.post(
       xpThreshold: z.number().int().optional().nullable(),
       rarityLevel: z.string().max(50).optional().nullable(),
       categoryIds: z.array(z.string()).optional().default([]),
-      unlockLessonId: z.string().optional().nullable(),
     });
     const body = bodySchema.parse(req.body);
     const slug = body.slug?.trim() || (await uniqueCharacterSlug(body.name));
@@ -1486,7 +1493,6 @@ contentAdminRouter.post(
         inventionImage: body.inventionImage || undefined,
         xpThreshold: body.xpThreshold ?? undefined,
         rarityLevel: body.rarityLevel ?? undefined,
-        unlockLessonId: body.unlockLessonId ?? undefined,
         // Create character-category relationships
         categories: {
           create: body.categoryIds.map((categoryId) => ({
@@ -1500,7 +1506,11 @@ contentAdminRouter.post(
             category: { select: { id: true, name: true, slug: true } },
           },
         },
-        unlockLesson: { select: { id: true, title: true, slug: true } },
+        lessons: {
+          include: {
+            lesson: { select: { id: true, title: true, slug: true } },
+          },
+        },
       },
     });
 
@@ -1535,7 +1545,6 @@ contentAdminRouter.patch(
       xpThreshold: z.number().int().optional().nullable(),
       rarityLevel: z.string().max(50).optional().nullable(),
       categoryIds: z.array(z.string()).optional(),
-      unlockLessonId: z.string().optional().nullable(),
     });
     const body = bodySchema.parse(req.body);
 
@@ -1582,8 +1591,6 @@ contentAdminRouter.patch(
           body.xpThreshold === undefined ? undefined : body.xpThreshold,
         rarityLevel:
           body.rarityLevel === undefined ? undefined : body.rarityLevel,
-        unlockLessonId:
-          body.unlockLessonId === undefined ? undefined : body.unlockLessonId,
       },
       include: {
         categories: {
@@ -1591,7 +1598,11 @@ contentAdminRouter.patch(
             category: { select: { id: true, name: true, slug: true } },
           },
         },
-        unlockLesson: { select: { id: true, title: true, slug: true } },
+        lessons: {
+          include: {
+            lesson: { select: { id: true, title: true, slug: true } },
+          },
+        },
       },
     });
 
@@ -1777,6 +1788,197 @@ contentAdminRouter.delete(
         action: "delete_character_translation",
         entityType: "character_translation",
         entityId: translationId,
+        changes: {},
+      },
+    });
+
+    res.status(204).send();
+  }),
+);
+
+// ---------- Character Lessons (Admin) ----------
+contentAdminRouter.get(
+  "/admin/characters/:characterId/lessons",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ characterId: z.string().min(1) });
+    const { characterId } = paramsSchema.parse(req.params);
+
+    const lessons = await prisma.characterLesson.findMany({
+      where: { characterId },
+      orderBy: { order: "asc" },
+      include: {
+        lesson: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            description: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({ lessons });
+  }),
+);
+
+contentAdminRouter.post(
+  "/admin/characters/:characterId/lessons",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ characterId: z.string().min(1) });
+    const { characterId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      lessonId: z.string().min(1),
+      order: z.number().int().optional(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+      select: { id: true },
+    });
+    if (!character) throw new HttpError(404, "Character not found");
+
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: body.lessonId },
+      select: { id: true },
+    });
+    if (!lesson) throw new HttpError(404, "Lesson not found");
+
+    // Check if lesson is already assigned to a character
+    const existing = await prisma.characterLesson.findUnique({
+      where: { lessonId: body.lessonId },
+    });
+    if (existing)
+      throw new HttpError(
+        409,
+        "Lesson is already assigned to another character",
+      );
+
+    // Get the next order if not provided
+    let order = body.order ?? 0;
+    if (order === 0) {
+      const maxOrder = await prisma.characterLesson.findFirst({
+        where: { characterId },
+        orderBy: { order: "desc" },
+        select: { order: true },
+      });
+      order = (maxOrder?.order ?? -1) + 1;
+    }
+
+    const characterLesson = await prisma.characterLesson.create({
+      data: {
+        characterId,
+        lessonId: body.lessonId,
+        order,
+      },
+      include: {
+        lesson: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            description: true,
+          },
+        },
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "assign_lesson_to_character",
+        entityType: "character_lesson",
+        entityId: characterLesson.id,
+        changes: { lessonId: body.lessonId, order },
+      },
+    });
+
+    res.status(201).json({ lesson: characterLesson });
+  }),
+);
+
+contentAdminRouter.put(
+  "/admin/characters/:characterId/lessons/:characterLessonId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      characterId: z.string().min(1),
+      characterLessonId: z.string().min(1),
+    });
+    const { characterId, characterLessonId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      order: z.number().int(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const characterLesson = await prisma.characterLesson.findUnique({
+      where: { id: characterLessonId },
+    });
+    if (!characterLesson || characterLesson.characterId !== characterId) {
+      throw new HttpError(404, "Character lesson not found");
+    }
+
+    const updated = await prisma.characterLesson.update({
+      where: { id: characterLessonId },
+      data: { order: body.order },
+      include: {
+        lesson: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            description: true,
+          },
+        },
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "update_character_lesson_order",
+        entityType: "character_lesson",
+        entityId: characterLessonId,
+        changes: { order: body.order },
+      },
+    });
+
+    res.status(200).json({ lesson: updated });
+  }),
+);
+
+contentAdminRouter.delete(
+  "/admin/characters/:characterId/lessons/:characterLessonId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      characterId: z.string().min(1),
+      characterLessonId: z.string().min(1),
+    });
+    const { characterId, characterLessonId } = paramsSchema.parse(req.params);
+
+    const characterLesson = await prisma.characterLesson.findUnique({
+      where: { id: characterLessonId },
+    });
+    if (!characterLesson || characterLesson.characterId !== characterId) {
+      throw new HttpError(404, "Character lesson not found");
+    }
+
+    await prisma.characterLesson.delete({ where: { id: characterLessonId } });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "remove_lesson_from_character",
+        entityType: "character_lesson",
+        entityId: characterLessonId,
         changes: {},
       },
     });

@@ -113,19 +113,22 @@ model CharacterCategory {
   @@index([categoryId])
 }
 
-// Junction table for many-to-many relationship between Lesson and Character
-model LessonCharacter {
+// CharacterLesson: Each lesson belongs to a character (one-to-many)
+// A lesson can only have ONE character, and that character is the focus of the lesson story
+model CharacterLesson {
   id          String   @id @default(cuid())
-  lessonId    String
+  lessonId    String   @unique // One lesson per character
   characterId String
+  order       Int      @default(0) // Order of lessons for a character
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  lesson    Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  lesson    Lesson    @relation("CharacterLessons", fields: [lessonId], references: [id], onDelete: Cascade)
+  character Character @relation("LessonsByCharacter", fields: [characterId], references: [id], onDelete: Cascade)
 
   @@unique([lessonId, characterId])
-  @@index([lessonId])
   @@index([characterId])
+  @@index([lessonId])
 }
 
 model Lesson {
@@ -170,8 +173,7 @@ model Lesson {
   reports          ContentReport[]
   offlineContent   OfflineContent[]
   collectionItems  CollectionItem[]
-  unlocksCharacter Character?
-  relatedCharacters LessonCharacter[]
+  characterLesson  CharacterLesson? @relation("CharacterLessons") // One character per lesson
   userProgress     UserProgress[]
   lessonFeedback   LessonFeedback[]
   comments         Comment[]
@@ -358,16 +360,15 @@ model Character {
   // Legacy fields (kept for backwards compatibility)
   inventionImage String?
 
-  // Many-to-many relationship with categories
+  // Many-to-many relationship with categories 
   categories CharacterCategory[]
-  relatedLessons LessonCharacter[]
+  
+  // Lessons belonging to this character (One character has many lessons/stories)
+  lessons CharacterLesson[] @relation("LessonsByCharacter")
   
   // Character unlock/progression
   unlockConditions CharacterUnlock[]
   userProgress     UserCharacterProgress[]
-
-  unlockLessonId String? @unique
-  unlockLesson   Lesson? @relation(fields: [unlockLessonId], references: [id], onDelete: SetNull)
 
   translations CharacterTranslation[]
   collectedBy  CollectedCharacter[]

@@ -158,7 +158,6 @@ progressRouter.post(
       select: {
         id: true,
         xpReward: true,
-        unlocksCharacter: { select: { id: true } },
       },
     });
     if (!lesson) throw new HttpError(404, "Lesson not found");
@@ -270,46 +269,8 @@ progressRouter.post(
           }
         }
 
-        // Unlock character (if the lesson unlocks one) on first completion only.
-        const unlockedCharacterId = lesson.unlocksCharacter?.id;
-        if (unlockedCharacterId) {
-          const existingCollection = await tx.collectedCharacter.findUnique({
-            where: {
-              userId_characterId: {
-                userId: req.user!.id,
-                characterId: unlockedCharacterId,
-              },
-            },
-            select: { id: true },
-          });
-
-          if (!existingCollection) {
-            // New character unlocked
-            await tx.collectedCharacter.create({
-              data: {
-                userId: req.user!.id,
-                characterId: unlockedCharacterId,
-              },
-            });
-
-            // Get character info for notification
-            const character = await tx.character.findUnique({
-              where: { id: unlockedCharacterId },
-              select: { name: true },
-            });
-
-            if (character) {
-              await tx.notification.create({
-                data: {
-                  userId: req.user!.id,
-                  type: "CHARACTER_UNLOCKED",
-                  title: "New Character Unlocked!",
-                  message: `You've unlocked a new character: ${character.name}`,
-                },
-              });
-            }
-          }
-        }
+        // Character unlock logic removed - characters are now unlocked through other mechanisms
+        // and lessons are assigned to characters through the CharacterLesson junction table
       }
     });
 

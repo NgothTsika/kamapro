@@ -63,10 +63,13 @@ export type Character = {
       name: string;
     };
   }>;
-  unlockLesson?: {
+  lessons?: Array<{
     id: string;
     slug: string;
-  };
+    title: string;
+    description?: string | null;
+    order: number;
+  }>;
 };
 
 export type CharacterInCollection = {

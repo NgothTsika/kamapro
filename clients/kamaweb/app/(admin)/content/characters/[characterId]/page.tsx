@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,19 +37,24 @@ import {
 } from "@/components/ui/table";
 import { getAdminToken } from "@/lib/admin-auth";
 import {
+  assignLessonToCharacter,
   createCharacterTranslation,
   deleteAdminCharacter,
   deleteCharacterTranslation,
   getAdminCategories,
   getAdminCharacter,
   getAdminLessons,
+  getCharacterLessons,
+  removeCharacterLesson,
   updateAdminCharacter,
+  updateCharacterLessonOrder,
   updateCharacterTranslation,
 } from "@/lib/kama-api";
 import type {
   AdminCategory,
   AdminCharacterDetail,
   AdminLessonSummary,
+  CharacterLessonAdmin,
   CharacterTranslationAdmin,
 } from "@/lib/kama-types";
 
@@ -74,7 +79,6 @@ export default function CharacterEditorPage() {
     xpThreshold: string;
     rarityLevel: string;
     categoryId: string;
-    unlockLessonId: string;
     entityType: string;
     personType: string;
     placeType: string;
@@ -96,7 +100,6 @@ export default function CharacterEditorPage() {
     xpThreshold: "",
     rarityLevel: "",
     categoryId: "",
-    unlockLessonId: "",
     entityType: "person",
     personType: "inventor",
     placeType: "city",
@@ -121,19 +124,29 @@ export default function CharacterEditorPage() {
     story: "",
   });
 
+  // Lessons management state
+  const [characterLessons, setCharacterLessons] = useState<
+    CharacterLessonAdmin[]
+  >([]);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedLessonId, setSelectedLessonId] = useState("");
+  const [lessonsLoading, setLessonsLoading] = useState(false);
+
   const load = useCallback(async () => {
     const token = getAdminToken();
     if (!token || !characterId) return;
     setLoading(true);
     try {
-      const [c, cats, less] = await Promise.all([
+      const [c, cats, less, charLess] = await Promise.all([
         getAdminCharacter(token, characterId),
         getAdminCategories(token),
         getAdminLessons(token, "all"),
+        getCharacterLessons(token, characterId),
       ]);
       setCharacter(c);
       setCategories(cats);
       setLessons(less);
+      setCharacterLessons(charLess);
       setForm({
         name: c.name,
         slug: c.slug,
@@ -143,8 +156,7 @@ export default function CharacterEditorPage() {
         inventionImage: c.inventionImage ?? "",
         xpThreshold: c.xpThreshold != null ? String(c.xpThreshold) : "",
         rarityLevel: c.rarityLevel ?? "",
-        categoryId: c.categoryId ?? "",
-        unlockLessonId: c.unlockLessonId ?? "",
+        categoryId: c.categories?.[0]?.category?.id ?? "",
         entityType: c.entityType ?? "person",
         personType: c.personType ?? "inventor",
         placeType: c.placeType ?? "city",
@@ -185,7 +197,6 @@ export default function CharacterEditorPage() {
         xpThreshold: form.xpThreshold.trim() ? Number(form.xpThreshold) : null,
         rarityLevel: form.rarityLevel.trim() || null,
         categoryId: form.categoryId || null,
-        unlockLessonId: form.unlockLessonId || null,
         entityType: form.entityType || "person",
         personType: form.entityType === "person" ? form.personType : null,
         placeType: form.entityType === "place" ? form.placeType : null,
@@ -210,6 +221,65 @@ export default function CharacterEditorPage() {
       toast.error(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Lessons management functions
+  async function assignLesson() {
+    const token = getAdminToken();
+    if (!token || !character || !selectedLessonId) {
+      toast.error("Missing required data");
+      return;
+    }
+    setLessonsLoading(true);
+    try {
+      await assignLessonToCharacter(token, character.id, {
+        lessonId: selectedLessonId,
+      });
+      toast.success("Lesson assigned");
+      setAssignDialogOpen(false);
+      setSelectedLessonId("");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to assign lesson");
+    } finally {
+      setLessonsLoading(false);
+    }
+  }
+
+  async function removeLesson(charLessonId: string) {
+    if (!confirm("Remove this lesson from the character?")) return;
+    const token = getAdminToken();
+    if (!token || !character) return;
+    setLessonsLoading(true);
+    try {
+      await removeCharacterLesson(token, character.id, charLessonId);
+      toast.success("Lesson removed");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to remove lesson");
+    } finally {
+      setLessonsLoading(false);
+    }
+  }
+
+  async function reorderLesson(charLessonId: string, newOrder: number) {
+    const token = getAdminToken();
+    if (!token || !character) return;
+    setLessonsLoading(true);
+    try {
+      await updateCharacterLessonOrder(
+        token,
+        character.id,
+        charLessonId,
+        newOrder,
+      );
+      toast.success("Lesson order updated");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update order");
+    } finally {
+      setLessonsLoading(false);
     }
   }
 
@@ -318,6 +388,9 @@ export default function CharacterEditorPage() {
       <Tabs defaultValue="details">
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
+          <TabsTrigger value="lessons">
+            Lessons ({characterLessons.length})
+          </TabsTrigger>
           <TabsTrigger value="translations">
             Translations ({translations.length})
           </TabsTrigger>
@@ -722,26 +795,101 @@ export default function CharacterEditorPage() {
                   ))}
                 </NativeSelect>
               </div>
-              <div className="grid gap-2">
-                <Label>Unlock via lesson</Label>
-                <NativeSelect
-                  value={form.unlockLessonId}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, unlockLessonId: e.target.value }))
-                  }
-                  className="w-full min-w-0"
-                >
-                  <NativeSelectOption value="">None</NativeSelectOption>
-                  {lessons.map((l) => (
-                    <NativeSelectOption key={l.id} value={l.id}>
-                      {l.title}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </div>
               <Button onClick={() => void onSaveDetails()} disabled={saving}>
                 {saving ? "Saving..." : "Save changes"}
               </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="lessons">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle>Character Stories</CardTitle>
+                <CardDescription>
+                  Lessons assigned to this character, ordered for progression.
+                </CardDescription>
+              </div>
+              <Button
+                onClick={() => setAssignDialogOpen(true)}
+                disabled={lessonsLoading}
+              >
+                <Plus className="size-4" />
+                Assign lesson
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {characterLessons.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-8 text-center">
+                  No lessons assigned yet. Click "Assign lesson" to get started.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {characterLessons
+                    .sort((a, b) => a.order - b.order)
+                    .map((charLesson, index) => (
+                      <div
+                        key={charLesson.id}
+                        className="flex items-center gap-3 p-3 border rounded-lg bg-card hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-center w-8 h-8 rounded bg-primary/20 text-primary font-medium text-sm">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">
+                            {charLesson.lesson.title}
+                          </p>
+                          <p className="text-sm text-muted-foreground truncate">
+                            {charLesson.lesson.description || "No description"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() =>
+                              void reorderLesson(
+                                charLesson.id,
+                                charLesson.order - 1,
+                              )
+                            }
+                            disabled={lessonsLoading || index === 0}
+                            title="Move up"
+                          >
+                            <ArrowUp className="size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() =>
+                              void reorderLesson(
+                                charLesson.id,
+                                charLesson.order + 1,
+                              )
+                            }
+                            disabled={
+                              lessonsLoading ||
+                              index === characterLessons.length - 1
+                            }
+                            title="Move down"
+                          >
+                            <ArrowDown className="size-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="icon-sm"
+                            onClick={() => void removeLesson(charLesson.id)}
+                            disabled={lessonsLoading}
+                            title="Remove lesson"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -810,6 +958,51 @@ export default function CharacterEditorPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign lesson to character</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label>Select lesson</Label>
+              <NativeSelect
+                value={selectedLessonId}
+                onChange={(e) => setSelectedLessonId(e.target.value)}
+                className="w-full min-w-0"
+              >
+                <NativeSelectOption value="">
+                  Choose a lesson...
+                </NativeSelectOption>
+                {lessons
+                  .filter(
+                    (l) => !characterLessons.some((cl) => cl.lessonId === l.id),
+                  )
+                  .map((l) => (
+                    <NativeSelectOption key={l.id} value={l.id}>
+                      {l.title}
+                    </NativeSelectOption>
+                  ))}
+              </NativeSelect>
+            </div>
+          </div>
+          <DialogFooter className="border-t pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setAssignDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void assignLesson()}
+              disabled={lessonsLoading || !selectedLessonId}
+            >
+              {lessonsLoading ? "Assigning..." : "Assign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={trOpen} onOpenChange={setTrOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">

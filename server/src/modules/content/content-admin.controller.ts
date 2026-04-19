@@ -528,6 +528,7 @@ contentAdminRouter.patch(
       hookAudioUrl: z.string().url().optional().nullable(), // NEW
       contentAudioUrl: z.string().url().optional().nullable(), // NEW
       deepDiveAudioUrl: z.string().url().optional().nullable(), // NEW
+      characterId: z.string().optional().nullable(), // NEW: assign lesson to character
     });
     const body = bodySchema.parse(req.body);
 
@@ -573,6 +574,32 @@ contentAdminRouter.patch(
             : body.deepDiveAudioUrl, // NEW
       },
     });
+
+    // NEW: Handle character assignment if provided
+    if (body.characterId !== undefined) {
+      // Remove existing character-lesson relationship for this lesson
+      await prisma.characterLesson.deleteMany({
+        where: { lessonId },
+      });
+
+      // If characterId is provided and not null, create new relationship
+      if (body.characterId) {
+        const characterExists = await prisma.character.findUnique({
+          where: { id: body.characterId },
+        });
+        if (!characterExists) {
+          throw new HttpError(404, "Character not found");
+        }
+
+        await prisma.characterLesson.create({
+          data: {
+            lessonId,
+            characterId: body.characterId,
+            order: 0,
+          },
+        });
+      }
+    }
 
     await prisma.auditLog.create({
       data: {

@@ -107,7 +107,7 @@ export default function EditLessonPage() {
     hookAudioUrl: "",
     contentAudioUrl: "",
     deepDiveAudioUrl: "",
-    characterIds: [] as string[],
+    characterId: "" as string, // UPDATED: single character, not array
   });
 
   const [chapterOpen, setChapterOpen] = useState(false);
@@ -186,7 +186,7 @@ export default function EditLessonPage() {
         hookAudioUrl: l.hookAudioUrl ?? "",
         contentAudioUrl: l.contentAudioUrl ?? "",
         deepDiveAudioUrl: l.deepDiveAudioUrl ?? "",
-        characterIds: l.relatedCharacters?.map((rc) => rc.character.id) ?? [],
+        characterId: l.relatedCharacters?.[0]?.character.id ?? "", // UPDATED: single character
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load lesson");
@@ -222,7 +222,7 @@ export default function EditLessonPage() {
         hookAudioUrl: form.hookAudioUrl.trim() || null,
         contentAudioUrl: form.contentAudioUrl.trim() || null,
         deepDiveAudioUrl: form.deepDiveAudioUrl.trim() || null,
-        characterIds: form.characterIds,
+        characterId: form.characterId || null, // UPDATED: single character
       });
       toast.success("Lesson saved");
       await load();
@@ -767,47 +767,30 @@ export default function EditLessonPage() {
               </div>
 
               <div className="border-t pt-4">
-                <Label className="text-sm font-semibold block mb-3">
-                  Related Characters (optional)
-                </Label>
-                <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
-                  {characters.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      No characters available
-                    </p>
-                  ) : (
-                    characters.map((ch) => (
-                      <div key={ch.id} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id={`char-${ch.id}`}
-                          checked={form.characterIds.includes(ch.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setForm((f) => ({
-                                ...f,
-                                characterIds: [...f.characterIds, ch.id],
-                              }));
-                            } else {
-                              setForm((f) => ({
-                                ...f,
-                                characterIds: f.characterIds.filter(
-                                  (id) => id !== ch.id,
-                                ),
-                              }));
-                            }
-                          }}
-                          className="w-4 h-4"
-                        />
-                        <label
-                          htmlFor={`char-${ch.id}`}
-                          className="text-sm cursor-pointer flex-1"
-                        >
-                          {ch.name}
-                        </label>
-                      </div>
-                    ))
-                  )}
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <Label className="text-sm font-semibold block mb-2 text-blue-900">
+                    🎭 Character (Who is this lesson about?)
+                  </Label>
+                  <p className="text-xs text-blue-800 mb-3">
+                    Select the character this lesson belongs to. This determines
+                    where the lesson appears in the app.
+                  </p>
+                  <NativeSelect
+                    value={form.characterId}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, characterId: e.target.value }))
+                    }
+                    className="w-full min-w-0 bg-white"
+                  >
+                    <NativeSelectOption value="">
+                      -- No character assigned --
+                    </NativeSelectOption>
+                    {characters.map((ch) => (
+                      <NativeSelectOption key={ch.id} value={ch.id}>
+                        {ch.name}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
                 </div>
               </div>
 

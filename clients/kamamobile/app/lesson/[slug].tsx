@@ -83,7 +83,10 @@ export default function LessonFlowScreen() {
   });
 
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || typeof slug !== "string") {
+      setLesson(null);
+      return;
+    }
     getLessonBySlug(slug)
       .then((result) => setLesson(result))
       .catch(() => setLesson(null));

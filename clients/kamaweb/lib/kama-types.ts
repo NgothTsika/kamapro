@@ -268,6 +268,17 @@ export type ConceptType =
   | "culture"
   | string; // Allow custom types
 
+// NEW: CharacterLesson - represents lesson assigned to character
+export type CharacterLessonAdmin = {
+  id: string;
+  lessonId: string;
+  characterId: string;
+  order: number;
+  lesson: AdminLessonSummary;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AdminCharacter = {
   id: string;
   name: string;
@@ -279,13 +290,12 @@ export type AdminCharacter = {
   xpThreshold: number | null;
   rarityLevel: string | null;
   categories: Array<{ category: { id: string; name: string; slug: string } }>;
-  unlockLessonId: string | null;
-  unlockLesson: { id: string; title: string; slug: string } | null;
+  lessons?: CharacterLessonAdmin[]; // NEW: Lessons assigned to this character
   createdAt: string;
   updatedAt: string;
   translations?: CharacterTranslationAdmin[];
 
-  // Hierarchical type system
+  // ...existing code...
   entityType?: EntityType | null;
   personType?: PersonType | null;
   placeType?: PlaceType | null;
@@ -357,6 +367,7 @@ export type Character = {
   xpThreshold: number | null;
   categories: Array<{ category: { id: string; name: string; slug: string } }>;
   unlockLesson: { id: string; slug: string } | null;
+  lessons?: Array<{ id: string; slug: string; title: string }>; // NEW: Lessons for this character
   entityType?: string | null;
   personType?: string | null;
   placeType?: string | null;

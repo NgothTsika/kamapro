@@ -41,6 +41,7 @@ export default function NewLessonPage() {
   const [characters, setCharacters] = useState<AdminCharacter[]>([]);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
+    characterId: "",
     title: "",
     slug: "",
     description: "",
@@ -53,11 +54,10 @@ export default function NewLessonPage() {
     isPremium: false,
     categoryId: "",
     topicId: "",
-    characterIds: [] as string[],
-    titleAudioUrl: "", // NEW
-    hookAudioUrl: "", // NEW
-    contentAudioUrl: "", // NEW
-    deepDiveAudioUrl: "", // NEW
+    titleAudioUrl: "",
+    hookAudioUrl: "",
+    contentAudioUrl: "",
+    deepDiveAudioUrl: "",
   });
 
   useEffect(() => {
@@ -95,11 +95,10 @@ export default function NewLessonPage() {
         isPremium: form.isPremium,
         categoryId: form.categoryId || null,
         topicId: form.topicId || null,
-        characterIds: form.characterIds,
-        titleAudioUrl: form.titleAudioUrl.trim() || null, // NEW
-        hookAudioUrl: form.hookAudioUrl.trim() || null, // NEW
-        contentAudioUrl: form.contentAudioUrl.trim() || null, // NEW
-        deepDiveAudioUrl: form.deepDiveAudioUrl.trim() || null, // NEW
+        titleAudioUrl: form.titleAudioUrl.trim() || null,
+        hookAudioUrl: form.hookAudioUrl.trim() || null,
+        contentAudioUrl: form.contentAudioUrl.trim() || null,
+        deepDiveAudioUrl: form.deepDiveAudioUrl.trim() || null,
       });
       toast.success("Lesson created");
       router.replace(`/content/lessons/${lesson.id}`);
@@ -135,11 +134,41 @@ export default function NewLessonPage() {
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={onSubmit}>
+          <div className="grid gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <Label htmlFor="character" className="font-semibold text-blue-900">
+              🎭 Character (Who is this lesson about?)
+            </Label>
+            <p className="text-xs text-blue-800 mb-2">
+              Select the character this lesson belongs to. This determines where
+              the lesson appears in the app.
+            </p>
+            <NativeSelect
+              id="character"
+              value={form.characterId}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, characterId: e.target.value }))
+              }
+              className="w-full min-w-0 bg-white"
+            >
+              <NativeSelectOption value="">
+                -- Select a character --
+              </NativeSelectOption>
+              {characters.map((ch) => (
+                <NativeSelectOption key={ch.id} value={ch.id}>
+                  {ch.name}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+
+          <hr className="my-4" />
+
           <div className="grid gap-2">
-            <Label htmlFor="title">Title</Label>
+            <Label htmlFor="title">Lesson Title *</Label>
             <Input
               id="title"
               required
+              placeholder="e.g., The Life of Nefertiti"
               value={form.title}
               onChange={(e) =>
                 setForm((f) => ({ ...f, title: e.target.value }))
@@ -188,48 +217,6 @@ export default function NewLessonPage() {
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <Label>Related Characters (optional)</Label>
-            <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
-              {characters.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No characters available
-                </p>
-              ) : (
-                characters.map((ch) => (
-                  <div key={ch.id} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id={`char-${ch.id}`}
-                      checked={form.characterIds.includes(ch.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setForm((f) => ({
-                            ...f,
-                            characterIds: [...f.characterIds, ch.id],
-                          }));
-                        } else {
-                          setForm((f) => ({
-                            ...f,
-                            characterIds: f.characterIds.filter(
-                              (id) => id !== ch.id,
-                            ),
-                          }));
-                        }
-                      }}
-                      className="w-4 h-4"
-                    />
-                    <label
-                      htmlFor={`char-${ch.id}`}
-                      className="text-sm cursor-pointer flex-1"
-                    >
-                      {ch.name}
-                    </label>
-                  </div>
-                ))
-              )}
             </div>
           </div>
           <div className="grid gap-2">

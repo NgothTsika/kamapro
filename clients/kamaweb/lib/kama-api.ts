@@ -9,6 +9,7 @@ import type {
   AdminLessonSummary,
   AdminUser,
   Character,
+  CharacterLessonAdmin,
   CharacterTranslationAdmin,
   Chapter,
   Lesson,
@@ -429,7 +430,7 @@ export async function updateAdminLesson(
     hookAudioUrl: string | null; // NEW
     contentAudioUrl: string | null; // NEW
     deepDiveAudioUrl: string | null; // NEW
-    characterIds: string[]; // NEW
+    characterId: string | null; // UPDATED: single character, not array
   }>,
 ): Promise<AdminLessonDetail> {
   const data = await apiRequest<{ lesson: AdminLessonDetail }>(
@@ -867,6 +868,81 @@ export async function deleteCharacterTranslation(
 ): Promise<void> {
   await apiRequest<void>(
     `/content/admin/character-translations/${translationId}`,
+    {
+      token,
+      method: "DELETE",
+    },
+  );
+}
+
+// ==================== Character Lessons ====================
+
+/**
+ * Get all lessons assigned to a character
+ */
+export async function getCharacterLessons(
+  token: string,
+  characterId: string,
+): Promise<CharacterLessonAdmin[]> {
+  const data = await apiRequest<{ lessons: CharacterLessonAdmin[] }>(
+    `/content/admin/characters/${characterId}/lessons`,
+    { token },
+  );
+  return data.lessons;
+}
+
+/**
+ * Assign a lesson to a character
+ */
+export async function assignLessonToCharacter(
+  token: string,
+  characterId: string,
+  payload: {
+    lessonId: string;
+    order?: number;
+  },
+): Promise<CharacterLessonAdmin> {
+  const data = await apiRequest<{ lesson: CharacterLessonAdmin }>(
+    `/content/admin/characters/${characterId}/lessons`,
+    {
+      token,
+      method: "POST",
+      body: payload,
+    },
+  );
+  return data.lesson;
+}
+
+/**
+ * Update lesson order for a character
+ */
+export async function updateCharacterLessonOrder(
+  token: string,
+  characterId: string,
+  lessonId: string,
+  order: number,
+): Promise<CharacterLessonAdmin> {
+  const data = await apiRequest<{ lesson: CharacterLessonAdmin }>(
+    `/content/admin/characters/${characterId}/lessons/${lessonId}`,
+    {
+      token,
+      method: "PUT",
+      body: { order },
+    },
+  );
+  return data.lesson;
+}
+
+/**
+ * Remove a lesson from a character
+ */
+export async function removeCharacterLesson(
+  token: string,
+  characterId: string,
+  lessonId: string,
+): Promise<void> {
+  await apiRequest<void>(
+    `/content/admin/characters/${characterId}/lessons/${lessonId}`,
     {
       token,
       method: "DELETE",

@@ -35,10 +35,6 @@ interface CharacterDetail extends Character {
       name: string;
     };
   }>;
-  unlockLesson?: {
-    id: string;
-    slug: string;
-  };
 }
 
 export default function CharacterDetailPage() {
@@ -76,7 +72,7 @@ export default function CharacterDetailPage() {
         setLoading(true);
         setError(null);
         const data = await getCharacterBySlug(slug);
-        setCharacter(data);
+        setCharacter(data as CharacterDetail);
       } catch (err) {
         console.error("Failed to load character:", err);
         setError(
@@ -386,37 +382,87 @@ export default function CharacterDetailPage() {
               </View>
             )}
 
-            {/* Unlock Lesson Button */}
-            {character.unlockLesson && (
-              <Pressable
-                style={({ pressed }) => [
-                  dynamicStyles.unlockButton,
-                  {
-                    backgroundColor: palette.primary,
-                    opacity: pressed ? 0.8 : 1,
-                  },
-                ]}
-                onPress={() => {
-                  console.log(
-                    "Navigate to lesson:",
-                    character.unlockLesson?.slug,
-                  );
-                }}
-              >
-                <MaterialCommunityIcons
-                  name="book-open-page-variant"
-                  size={20}
-                  color="white"
-                />
-                <Text style={dynamicStyles.unlockButtonText}>
-                  Unlock Lesson
+            {/* Lessons/Stories Section */}
+            {character.lessons && character.lessons.length > 0 && (
+              <View>
+                <Text
+                  style={[
+                    dynamicStyles.sectionTitle,
+                    { color: palette.text, marginBottom: 16 },
+                  ]}
+                >
+                  Stories ({character.lessons.length})
                 </Text>
-                <MaterialCommunityIcons
-                  name="arrow-right"
-                  size={18}
-                  color="white"
-                />
-              </Pressable>
+                {character.lessons
+                  .sort((a, b) => a.order - b.order)
+                  .map((lesson, index) => (
+                    <Pressable
+                      key={lesson.id}
+                      style={({ pressed }) => [
+                        dynamicStyles.unlockButton,
+                        {
+                          backgroundColor: palette.primary,
+                          opacity: pressed ? 0.8 : 1,
+                          marginBottom:
+                            index < character.lessons!.length - 1 ? 12 : 0,
+                        },
+                      ]}
+                      onPress={() => {
+                        // Navigate to lesson only if slug is available
+                        if (lesson.slug) {
+                          router.push(`/lesson/${lesson.slug}`);
+                        }
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 12,
+                          backgroundColor: "rgba(255,255,255,0.2)",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          marginRight: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: "white",
+                            fontWeight: "600",
+                            fontSize: 12,
+                          }}
+                        >
+                          {index + 1}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={dynamicStyles.unlockButtonText}
+                          numberOfLines={1}
+                        >
+                          {lesson.title}
+                        </Text>
+                        {lesson.description && (
+                          <Text
+                            style={{
+                              color: "rgba(255,255,255,0.8)",
+                              fontSize: 12,
+                              marginTop: 2,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {lesson.description}
+                          </Text>
+                        )}
+                      </View>
+                      <MaterialCommunityIcons
+                        name="arrow-right"
+                        size={18}
+                        color="white"
+                      />
+                    </Pressable>
+                  ))}
+              </View>
             )}
           </View>
         </View>

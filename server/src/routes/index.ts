@@ -20,7 +20,6 @@ import gamificationRouter from "../modules/gamification/gamification.controller"
 import { gamificationAdminRouter } from "../modules/admin/controllers/gamification.admin.controller";
 import { feedbackAdminRouter } from "../modules/admin/controllers/feedback.admin.controller";
 import { moderationAdminRouter } from "../modules/admin/controllers/moderation.admin.controller";
-import { contentAdminRouter } from "../modules/content/content-admin.controller";
 
 export const apiRouter = Router();
 

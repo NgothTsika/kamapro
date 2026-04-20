@@ -6,6 +6,8 @@ import { asyncHandler } from "../../lib/http";
 import { requireAuth } from "../../middleware/auth.middleware";
 import { requireRole } from "../../middleware/role.middleware";
 import { HttpError } from "../../lib/errors";
+import * as chapterStepsService from "./chapter-steps.service";
+import { validateStepContent, ChapterStepTypeEnum } from "./chapter.types";
 
 const adminRoles = requireRole("ADMIN", "MODERATOR");
 
@@ -665,7 +667,6 @@ contentAdminRouter.post(
       data: {
         lessonId,
         title: body.title.trim(),
-        content: body.content,
         coverImage: body.coverImage || undefined,
         mediaType: body.mediaType ?? undefined,
         mediaUrl: body.mediaUrl || undefined,
@@ -710,7 +711,6 @@ contentAdminRouter.patch(
       where: { id: chapterId },
       data: {
         title: body.title?.trim() ?? undefined,
-        content: body.content ?? undefined,
         coverImage:
           body.coverImage === undefined ? undefined : body.coverImage || null,
         mediaType: body.mediaType === undefined ? undefined : body.mediaType,
@@ -759,6 +759,197 @@ contentAdminRouter.delete(
     });
 
     res.status(204).send();
+  }),
+);
+
+// ---------- Chapter Steps (Admin) ----------
+
+// Create step
+contentAdminRouter.post(
+  "/admin/lessons/:lessonId/chapters/:chapterId/steps",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      lessonId: z.string().min(1),
+      chapterId: z.string().min(1),
+    });
+    const { chapterId } = paramsSchema.parse(req.params);
+
+    const bodySchema = z.object({
+      order: z.number().int().nonnegative(),
+      type: ChapterStepTypeEnum,
+      content: z.record(z.any()),
+      mediaUrl: z.string().url().optional(),
+      mediaType: z.enum(["image", "video", "none"]).optional(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    // Validate step content matches type
+    if (!validateStepContent(body.type, body.content)) {
+      throw new HttpError(
+        400,
+        `Invalid content structure for step type: ${body.type}`,
+      );
+    }
+
+    const step = await chapterStepsService.createChapterStep(chapterId, body);
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "create_chapter_step",
+        entityType: "chapter_step",
+        entityId: step.id,
+        changes: { chapterId, type: step.type, order: step.order },
+      },
+    });
+
+    res.status(201).json({ step });
+  }),
+);
+
+// Get step
+contentAdminRouter.get(
+  "/admin/lessons/:lessonId/chapters/:chapterId/steps/:stepId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      lessonId: z.string().min(1),
+      chapterId: z.string().min(1),
+      stepId: z.string().min(1),
+    });
+    const { stepId } = paramsSchema.parse(req.params);
+
+    const step = await prisma.chapterStep.findUnique({
+      where: { id: stepId },
+    });
+
+    if (!step) throw new HttpError(404, "Step not found");
+
+    res.status(200).json({ step });
+  }),
+);
+
+// Update step
+contentAdminRouter.patch(
+  "/admin/lessons/:lessonId/chapters/:chapterId/steps/:stepId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      lessonId: z.string().min(1),
+      chapterId: z.string().min(1),
+      stepId: z.string().min(1),
+    });
+    const { stepId } = paramsSchema.parse(req.params);
+
+    const bodySchema = z.object({
+      order: z.number().int().nonnegative().optional(),
+      type: ChapterStepTypeEnum.optional(),
+      content: z.record(z.any()).optional(),
+      mediaUrl: z.string().url().optional(),
+      mediaType: z.enum(["image", "video", "none"]).optional(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    // Validate content if provided
+    if (body.content || body.type) {
+      const existingStep = await prisma.chapterStep.findUnique({
+        where: { id: stepId },
+      });
+      if (!existingStep) throw new HttpError(404, "Step not found");
+
+      const typeToValidate = body.type || existingStep.type;
+      const contentToValidate = body.content || existingStep.content;
+
+      if (!validateStepContent(typeToValidate, contentToValidate)) {
+        throw new HttpError(
+          400,
+          `Invalid content structure for step type: ${typeToValidate}`,
+        );
+      }
+    }
+
+    const step = await chapterStepsService.updateChapterStep(stepId, body);
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "update_chapter_step",
+        entityType: "chapter_step",
+        entityId: step.id,
+        changes: jsonChanges(body),
+      },
+    });
+
+    res.status(200).json({ step });
+  }),
+);
+
+// Delete step
+contentAdminRouter.delete(
+  "/admin/lessons/:lessonId/chapters/:chapterId/steps/:stepId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      lessonId: z.string().min(1),
+      chapterId: z.string().min(1),
+      stepId: z.string().min(1),
+    });
+    const { stepId } = paramsSchema.parse(req.params);
+
+    await chapterStepsService.deleteChapterStep(stepId);
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "delete_chapter_step",
+        entityType: "chapter_step",
+        entityId: stepId,
+        changes: {},
+      },
+    });
+
+    res.status(200).json({ success: true, message: "Step deleted" });
+  }),
+);
+
+// Reorder steps
+contentAdminRouter.post(
+  "/admin/lessons/:lessonId/chapters/:chapterId/reorder-steps",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      lessonId: z.string().min(1),
+      chapterId: z.string().min(1),
+    });
+    const { chapterId } = paramsSchema.parse(req.params);
+
+    const bodySchema = z.object({
+      stepIds: z.array(z.string()),
+    });
+    const { stepIds } = bodySchema.parse(req.body);
+
+    const steps = await chapterStepsService.reorderChapterSteps(
+      chapterId,
+      stepIds,
+    );
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "reorder_chapter_steps",
+        entityType: "chapter",
+        entityId: chapterId,
+        changes: { stepCount: steps.length },
+      },
+    });
+
+    res.status(200).json({ steps });
   }),
 );
 

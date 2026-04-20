@@ -2,8 +2,13 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/http";
+import { requireAuth } from "../../middleware/auth.middleware";
+import { HttpError } from "../../lib/errors";
 import { contentAdminRouter } from "./content-admin.controller";
-import { pollRouter } from "../quiz/poll.controller"; // NEW: Import poll router
+import { pollRouter } from "../quiz/poll.controller";
+import * as progressService from "./chapter-progress.service";
+import * as stepsService from "./chapter-steps.service";
+import { RespondToStepSchema, AdvanceChapterSchema } from "./chapter.types";
 
 /** Merge localized quiz copy when `translations` was loaded for a single language; strip `translations` from the payload. */
 function applyQuizLanguage<
@@ -31,7 +36,7 @@ function applyQuizLanguage<
 
 export const contentRouter = Router();
 contentRouter.use(contentAdminRouter);
-contentRouter.use(pollRouter); // NEW: Mount poll router
+contentRouter.use(pollRouter);
 
 contentRouter.get(
   "/categories",
@@ -200,7 +205,6 @@ contentRouter.get(
             id: true,
             title: true,
             order: true,
-            content: true,
             mediaType: true,
             mediaUrl: true,
           },
@@ -391,7 +395,6 @@ contentRouter.get(
         id: true,
         title: true,
         order: true,
-        content: true,
         mediaType: true,
         mediaUrl: true,
         feedbackQuestion: true,
@@ -685,5 +688,253 @@ contentRouter.get(
     }
 
     res.status(200).json({ collection: collection[0] });
+  }),
+);
+
+// ==================== INTERACTIVE CHAPTERS (PUBLIC) ====================
+
+// Get lesson with all chapters and steps
+contentRouter.get(
+  "/lessons/:lessonId/interactive",
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ lessonId: z.string().min(1) });
+    const { lessonId } = paramsSchema.parse(req.params);
+
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: {
+        chapters: {
+          orderBy: { order: "asc" },
+          include: {
+            steps: { orderBy: { order: "asc" } },
+          },
+        },
+      },
+    });
+
+    if (!lesson) return res.status(404).json({ error: "Lesson not found" });
+
+    res.status(200).json({ lesson });
+  }),
+);
+
+// Get chapter with steps
+contentRouter.get(
+  "/chapters/:chapterId",
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ chapterId: z.string().min(1) });
+    const { chapterId } = paramsSchema.parse(req.params);
+
+    const chapter = await prisma.chapter.findUnique({
+      where: { id: chapterId },
+      include: {
+        steps: { orderBy: { order: "asc" } },
+      },
+    });
+
+    if (!chapter) throw new HttpError(404, "Chapter not found");
+
+    res.status(200).json({ chapter });
+  }),
+);
+
+// Get user's progress through lesson
+contentRouter.get(
+  "/lessons/:lessonId/progress",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ lessonId: z.string().min(1) });
+    const { lessonId } = paramsSchema.parse(req.params);
+    const userId = req.user!.id;
+
+    try {
+      const progressData =
+        await progressService.getUserLessonProgressWithDetails(
+          userId,
+          lessonId,
+        );
+
+      res.status(200).json({
+        success: true,
+        progress: progressData,
+      });
+    } catch (err: any) {
+      throw new HttpError(404, err.message || "Lesson not found");
+    }
+  }),
+);
+
+// Get user's chapter progress
+contentRouter.get(
+  "/chapters/:chapterId/progress",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ chapterId: z.string().min(1) });
+    const { chapterId } = paramsSchema.parse(req.params);
+    const userId = req.user!.id;
+
+    const progress = await prisma.userChapterProgress.findUnique({
+      where: {
+        userId_chapterId: { userId, chapterId },
+      },
+    });
+
+    if (!progress) {
+      // Create progress if doesn't exist
+      const newProgress = await progressService.getOrCreateChapterProgress(
+        userId,
+        chapterId,
+      );
+      return res.status(200).json({ success: true, progress: newProgress });
+    }
+
+    res.status(200).json({ success: true, progress });
+  }),
+);
+
+// Respond to a step (poll/choice/quiz)
+contentRouter.post(
+  "/lessons/:lessonId/chapters/:chapterId/steps/:stepId/respond",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      lessonId: z.string().min(1),
+      chapterId: z.string().min(1),
+      stepId: z.string().min(1),
+    });
+    const { lessonId, chapterId, stepId } = paramsSchema.parse(req.params);
+    const userId = req.user!.id;
+
+    const { type, selectedOption, chosenStepId } = RespondToStepSchema.parse(
+      req.body,
+    );
+
+    // Verify step exists
+    const step = await prisma.chapterStep.findUnique({
+      where: { id: stepId },
+    });
+
+    if (!step) throw new HttpError(404, "Step not found");
+
+    // Verify chapter exists and belongs to lesson
+    const chapter = await prisma.chapter.findUnique({
+      where: { id: chapterId },
+    });
+
+    if (!chapter || chapter.lessonId !== lessonId) {
+      throw new HttpError(400, "Chapter does not belong to lesson");
+    }
+
+    // Record response
+    const response = await stepsService.recordStepResponse(
+      userId,
+      stepId,
+      type as "poll" | "choice",
+      selectedOption,
+      chosenStepId,
+    );
+
+    res.status(200).json({
+      success: true,
+      response,
+    });
+  }),
+);
+
+// Advance to next step
+contentRouter.post(
+  "/lessons/:lessonId/chapters/:chapterId/advance",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      lessonId: z.string().min(1),
+      chapterId: z.string().min(1),
+    });
+    const { lessonId, chapterId } = paramsSchema.parse(req.params);
+    const userId = req.user!.id;
+
+    const { fromStepIndex } = AdvanceChapterSchema.parse(req.body);
+
+    // Verify chapter exists and belongs to lesson
+    const chapter = await prisma.chapter.findUnique({
+      where: { id: chapterId },
+    });
+
+    if (!chapter || chapter.lessonId !== lessonId) {
+      throw new HttpError(400, "Chapter does not belong to lesson");
+    }
+
+    const updated = await progressService.advanceChapterStep(
+      userId,
+      chapterId,
+      fromStepIndex,
+    );
+
+    res.status(200).json({
+      success: true,
+      progress: updated,
+    });
+  }),
+);
+
+// Complete chapter
+contentRouter.post(
+  "/lessons/:lessonId/chapters/:chapterId/complete",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      lessonId: z.string().min(1),
+      chapterId: z.string().min(1),
+    });
+    const { lessonId, chapterId } = paramsSchema.parse(req.params);
+    const userId = req.user!.id;
+
+    // Verify chapter exists and belongs to lesson
+    const chapter = await prisma.chapter.findUnique({
+      where: { id: chapterId },
+    });
+
+    if (!chapter || chapter.lessonId !== lessonId) {
+      throw new HttpError(400, "Chapter does not belong to lesson");
+    }
+
+    const { progress, completion } = await progressService.completeChapter(
+      userId,
+      chapterId,
+    );
+
+    // Optionally advance lesson to next chapter
+    try {
+      await progressService.advanceLesson(userId, lessonId);
+    } catch (err) {
+      // Lesson doesn't have more chapters, that's fine
+    }
+
+    res.status(200).json({
+      success: true,
+      progress,
+      completion,
+    });
+  }),
+);
+
+// Get user's responses to a step
+contentRouter.get(
+  "/chapters/:chapterId/steps/:stepId/my-response",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      chapterId: z.string().min(1),
+      stepId: z.string().min(1),
+    });
+    const { stepId } = paramsSchema.parse(req.params);
+    const userId = req.user!.id;
+
+    const response = await stepsService.getUserStepResponse(userId, stepId);
+
+    res.status(200).json({
+      success: true,
+      response: response || null,
+    });
   }),
 );

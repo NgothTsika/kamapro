@@ -2,7 +2,7 @@ import "dotenv/config";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 
 const connectionString = `${process.env.DATABASE_URL ?? ""}`;
 if (!connectionString) {
@@ -18,15 +18,12 @@ async function main() {
 
   // ==================== ADMIN USER ====================
   const adminEmail = "admin@kamagame.com";
-  // Use SEED_ADMIN_PASSWORD env var if provided, otherwise use default (CHANGE IN PRODUCTION!)
   const adminPassword = process.env.SEED_ADMIN_PASSWORD || "Admin@ngoth09";
   const adminPasswordHash = await bcrypt.hash(adminPassword, 10);
 
-  const admin = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: adminEmail },
-    update: {
-      passwordHash: adminPasswordHash,
-    },
+    update: { passwordHash: adminPasswordHash },
     create: {
       email: adminEmail,
       username: "admin",
@@ -35,712 +32,260 @@ async function main() {
       emailVerified: true,
     },
   });
-
   console.log(`✅ Admin user: ${adminEmail} (Password: ${adminPassword})`);
 
   // ==================== CATEGORIES ====================
-  // Seeds comprehensive categories from seedNote.txt
-
+  // Representative subset – expand as needed
   const categoriesData = [
-    // ========== TOP LEVEL CATEGORIES ==========
+    // Top-level
     {
       name: "Africa",
       slug: "africa",
       parentSlug: null,
-      description:
-        "The birthplace of humanity, home to diverse cultures, ancient kingdoms, and modern nations.",
+      description: "The birthplace of humanity",
       order: 0,
     },
     {
       name: "Diaspora",
       slug: "diaspora",
       parentSlug: null,
-      description:
-        "Communities of African descent across the Americas, Caribbean, Europe, and beyond.",
+      description: "African diaspora communities",
       order: 1,
     },
     {
       name: "Ancient Civilizations",
       slug: "ancient-civilizations",
       parentSlug: null,
-      description: "Early African civilizations that shaped human history.",
+      description: "Early African civilizations",
       order: 2,
     },
     {
       name: "Empires & Kingdoms",
       slug: "empires-kingdoms",
       parentSlug: null,
-      description:
-        "Medieval and early modern African empires that dominated trade, culture, and politics.",
+      description: "Medieval African empires",
       order: 3,
     },
-    {
-      name: "Colonial Era",
-      slug: "colonial-era",
-      parentSlug: null,
-      description:
-        "European colonization, resistance, and the transatlantic slave trade.",
-      order: 4,
-    },
-    {
-      name: "Independence & Modern",
-      slug: "independence-modern",
-      parentSlug: null,
-      description: "Decolonization, nation-building, and contemporary Africa.",
-      order: 5,
-    },
-    {
-      name: "Culture",
-      slug: "culture",
-      parentSlug: null,
-      description:
-        "Art, music, literature, and traditions of African and Black peoples.",
-      order: 6,
-    },
-    {
-      name: "Science & Innovation",
-      slug: "science-innovation",
-      parentSlug: null,
-      description:
-        "Contributions of African and Black people to science, technology, and invention.",
-      order: 7,
-    },
-    {
-      name: "Warriors & Leaders",
-      slug: "warriors-leaders",
-      parentSlug: null,
-      description: "Military leaders, monarchs, and political visionaries.",
-      order: 8,
-    },
-    {
-      name: "Activists & Civil Rights",
-      slug: "activists-civil-rights",
-      parentSlug: null,
-      description: "Campaigners for equality and justice.",
-      order: 9,
-    },
-    {
-      name: "Religion & Spirituality",
-      slug: "religion-spirituality",
-      parentSlug: null,
-      description: "Belief systems, rituals, and spiritual traditions.",
-      order: 10,
-    },
-    {
-      name: "Figures by Profession",
-      slug: "figures-by-profession",
-      parentSlug: null,
-      description: "Categorization by fields of achievement.",
-      order: 11,
-    },
-    {
-      name: "Women in History",
-      slug: "women-in-history",
-      parentSlug: null,
-      description: "Queens, activists, and pioneering women.",
-      order: 12,
-    },
-    {
-      name: "Trade & Economics",
-      slug: "trade-economics",
-      parentSlug: null,
-      description: "Salt, gold, commerce, and economic systems.",
-      order: 13,
-    },
-    {
-      name: "Prehistory",
-      slug: "prehistory",
-      parentSlug: null,
-      description: "Human origins and early African societies.",
-      order: 14,
-    },
-
-    // ========== AFRICA SUBCATEGORIES ==========
+    // Subcategories (example)
     {
       name: "West Africa",
       slug: "west-africa",
       parentSlug: "africa",
-      description:
-        "Region known for powerful empires (Ghana, Mali, Songhai), vibrant cultures, and the transatlantic slave trade.",
+      description: "West African region",
       order: 0,
     },
-    {
-      name: "East Africa",
-      slug: "east-africa",
-      parentSlug: "africa",
-      description:
-        "Cradle of humanity, Swahili coast, Great Lakes kingdoms, and ancient Aksum.",
-      order: 1,
-    },
-    {
-      name: "Central Africa",
-      slug: "central-africa",
-      parentSlug: "africa",
-      description:
-        "Rainforest kingdoms (Kongo, Luba, Lunda), diverse ethnic groups, and colonial history.",
-      order: 2,
-    },
-    {
-      name: "Southern Africa",
-      slug: "southern-africa",
-      parentSlug: "africa",
-      description:
-        "Great Zimbabwe, Zulu Kingdom, Ndebele, San people, and the struggle against apartheid.",
-      order: 3,
-    },
-    {
-      name: "North Africa",
-      slug: "north-africa",
-      parentSlug: "africa",
-      description:
-        "Ancient Egypt, Carthage, Numidia, Amazigh (Berber) cultures, and Islamic empires.",
-      order: 4,
-    },
-
-    // ========== DIASPORA SUBCATEGORIES ==========
-    {
-      name: "Caribbean",
-      slug: "caribbean",
-      parentSlug: "diaspora",
-      description:
-        "Maroon societies, Haitian Revolution, reggae, carnival, and African retentions.",
-      order: 0,
-    },
-    {
-      name: "North America",
-      slug: "north-america",
-      parentSlug: "diaspora",
-      description:
-        "African American history, Civil Rights Movement, Harlem Renaissance, Black culture in USA and Canada.",
-      order: 1,
-    },
-    {
-      name: "South America",
-      slug: "south-america",
-      parentSlug: "diaspora",
-      description:
-        "Afro-Brazilian quilombos, Afro-Colombian communities, candomblé, and capoeira.",
-      order: 2,
-    },
-    {
-      name: "Europe",
-      slug: "europe",
-      parentSlug: "diaspora",
-      description:
-        "Black communities in the UK, France, Germany, and the African presence in Europe since Roman times.",
-      order: 3,
-    },
-
-    // ========== ANCIENT CIVILIZATIONS SUBCATEGORIES ==========
     {
       name: "Ancient Egypt",
       slug: "ancient-egypt",
       parentSlug: "ancient-civilizations",
-      description:
-        "Pharaohs, pyramids, hieroglyphs, and the Nile Valley civilization.",
+      description: "Egyptian civilization",
       order: 0,
-    },
-    {
-      name: "Kingdom of Kush",
-      slug: "kingdom-of-kush",
-      parentSlug: "ancient-civilizations",
-      description:
-        "Nubian kingdom that ruled Egypt as the 25th Dynasty, known for pyramids at Meroë.",
-      order: 1,
-    },
-    {
-      name: "Nok Culture",
-      slug: "nok-culture",
-      parentSlug: "ancient-civilizations",
-      description:
-        "West Africa's earliest known civilization (c. 1500 BCE – 500 CE), famous for terracotta sculptures.",
-      order: 2,
-    },
-    {
-      name: "Kingdom of Aksum",
-      slug: "kingdom-of-aksum",
-      parentSlug: "ancient-civilizations",
-      description:
-        "Ethiopian empire that controlled Red Sea trade, adopted Christianity early.",
-      order: 3,
-    },
-    {
-      name: "Great Zimbabwe",
-      slug: "great-zimbabwe",
-      parentSlug: "ancient-civilizations",
-      description:
-        "Stone city and trade empire in southern Africa (c. 1000–1450 CE).",
-      order: 4,
-    },
-
-    // ========== EMPIRES & KINGDOMS SUBCATEGORIES ==========
-    {
-      name: "Ghana Empire",
-      slug: "ghana-empire",
-      parentSlug: "empires-kingdoms",
-      description:
-        "Wagadou Empire (c. 300–1200 CE), center of gold and salt trade.",
-      order: 0,
-    },
-    {
-      name: "Mali Empire",
-      slug: "mali-empire",
-      parentSlug: "empires-kingdoms",
-      description: "Famous for Mansa Musa, Timbuktu, and trans-Saharan trade.",
-      order: 1,
-    },
-    {
-      name: "Songhai Empire",
-      slug: "songhai-empire",
-      parentSlug: "empires-kingdoms",
-      description: "Largest West African empire under Askia the Great.",
-      order: 2,
-    },
-    {
-      name: "Benin Kingdom",
-      slug: "benin-kingdom",
-      parentSlug: "empires-kingdoms",
-      description: "Famed for bronze casting and the Oba's court (Nigeria).",
-      order: 3,
-    },
-    {
-      name: "Kongo Kingdom",
-      slug: "kongo-kingdom",
-      parentSlug: "empires-kingdoms",
-      description:
-        "Central African kingdom that embraced Christianity and resisted Portuguese colonization.",
-      order: 4,
-    },
-    {
-      name: "Zulu Kingdom",
-      slug: "zulu-kingdom",
-      parentSlug: "empires-kingdoms",
-      description:
-        "Southern African kingdom under Shaka, known for military innovation.",
-      order: 5,
-    },
-
-    // ========== COLONIAL ERA SUBCATEGORIES ==========
-    {
-      name: "Transatlantic Slave Trade",
-      slug: "slave-trade",
-      parentSlug: "colonial-era",
-      description:
-        "The forced migration of millions of Africans, Middle Passage, and its lasting impact.",
-      order: 0,
-    },
-    {
-      name: "Resistance Movements",
-      slug: "resistance-movements",
-      parentSlug: "colonial-era",
-      description:
-        "Slave revolts, anti-colonial wars, and leaders like Queen Nzinga, Samori Touré.",
-      order: 1,
-    },
-
-    // ========== INDEPENDENCE & MODERN SUBCATEGORIES ==========
-    {
-      name: "Independence Movements",
-      slug: "independence-movements",
-      parentSlug: "independence-modern",
-      description:
-        "Struggles for freedom from colonial rule (Ghana, Kenya, Algeria, etc.).",
-      order: 0,
-    },
-    {
-      name: "Pan-Africanism",
-      slug: "pan-africanism",
-      parentSlug: "independence-modern",
-      description:
-        "Philosophy and movement for African unity, figures like Kwame Nkrumah, W.E.B. Du Bois.",
-      order: 1,
-    },
-
-    // ========== CULTURE SUBCATEGORIES ==========
-    {
-      name: "Art & Architecture",
-      slug: "art-architecture",
-      parentSlug: "culture",
-      description:
-        "From ancient Nok terracottas to modern African art, and architectural marvels.",
-      order: 0,
-    },
-    {
-      name: "Music & Dance",
-      slug: "music-dance",
-      parentSlug: "culture",
-      description:
-        "Jazz, blues, Afrobeat, reggae, hip-hop, and traditional rhythms.",
-      order: 1,
-    },
-    {
-      name: "Literature & Poetry",
-      slug: "literature-poetry",
-      parentSlug: "culture",
-      description:
-        "Oral traditions, Negritude, African novel, and contemporary writers.",
-      order: 2,
-    },
-    {
-      name: "Fashion & Textiles",
-      slug: "fashion-textiles",
-      parentSlug: "culture",
-      description:
-        "Kente cloth, Ankara, adire, and global Black fashion icons.",
-      order: 3,
-    },
-
-    // ========== SCIENCE & INNOVATION SUBCATEGORIES ==========
-    {
-      name: "Ancient Innovations",
-      slug: "ancient-innovations",
-      parentSlug: "science-innovation",
-      description:
-        "Mathematics, medicine, metallurgy, and astronomy in ancient Africa.",
-      order: 0,
-    },
-    {
-      name: "Modern Inventors",
-      slug: "modern-inventors",
-      parentSlug: "science-innovation",
-      description:
-        "Black inventors from Garrett Morgan to modern tech pioneers.",
-      order: 1,
-    },
-    {
-      name: "Medicine & Health",
-      slug: "medicine-health",
-      parentSlug: "science-innovation",
-      description:
-        "Traditional healers, modern medical breakthroughs, and public health leaders.",
-      order: 2,
-    },
-
-    // ========== WARRIORS & LEADERS SUBCATEGORIES ==========
-    {
-      name: "Military Leaders",
-      slug: "military-leaders",
-      parentSlug: "warriors-leaders",
-      description:
-        "Shaka Zulu, Queen Amina, Hannibal, and other strategic minds.",
-      order: 0,
-    },
-    {
-      name: "Political Leaders",
-      slug: "political-leaders",
-      parentSlug: "warriors-leaders",
-      description: "Presidents, prime ministers, and independence fighters.",
-      order: 1,
-    },
-
-    // ========== ACTIVISTS & CIVIL RIGHTS SUBCATEGORIES ==========
-    {
-      name: "Civil Rights Movement (USA)",
-      slug: "civil-rights-usa",
-      parentSlug: "activists-civil-rights",
-      description:
-        "Martin Luther King Jr., Rosa Parks, and the struggle for racial equality.",
-      order: 0,
-    },
-    {
-      name: "Anti-Apartheid Movement",
-      slug: "anti-apartheid",
-      parentSlug: "activists-civil-rights",
-      description:
-        "Nelson Mandela, Steve Biko, and the fight against apartheid in South Africa.",
-      order: 1,
-    },
-    {
-      name: "Black Lives Matter",
-      slug: "black-lives-matter",
-      parentSlug: "activists-civil-rights",
-      description: "Contemporary movement for racial justice.",
-      order: 2,
-    },
-
-    // ========== RELIGION & SPIRITUALITY SUBCATEGORIES ==========
-    {
-      name: "African Traditional Religions",
-      slug: "african-traditional-religions",
-      parentSlug: "religion-spirituality",
-      description: "Yoruba, Akan, Vodun, and other indigenous faiths.",
-      order: 0,
-    },
-    {
-      name: "Islam in Africa",
-      slug: "islam-africa",
-      parentSlug: "religion-spirituality",
-      description:
-        "Spread of Islam across the continent and its cultural impact.",
-      order: 1,
-    },
-    {
-      name: "Christianity in Africa",
-      slug: "christianity-africa",
-      parentSlug: "religion-spirituality",
-      description:
-        "Ancient Ethiopian Orthodox, colonial missions, and modern African churches.",
-      order: 2,
-    },
-    {
-      name: "Diaspora Religions",
-      slug: "diaspora-religions",
-      parentSlug: "religion-spirituality",
-      description:
-        "Vodou, Santería, Candomblé, and other syncretic traditions.",
-      order: 3,
-    },
-
-    // ========== FIGURES BY PROFESSION SUBCATEGORIES ==========
-    {
-      name: "Writers & Philosophers",
-      slug: "writers-philosophers",
-      parentSlug: "figures-by-profession",
-      description: "Chinua Achebe, Toni Morrison, Frantz Fanon, etc.",
-      order: 0,
-    },
-    {
-      name: "Artists & Musicians",
-      slug: "artists-musicians",
-      parentSlug: "figures-by-profession",
-      description: "Visual artists, composers, and performers.",
-      order: 1,
-    },
-    {
-      name: "Athletes",
-      slug: "athletes",
-      parentSlug: "figures-by-profession",
-      description: "Olympic champions, boxers, and sports pioneers.",
-      order: 2,
-    },
-    {
-      name: "Scientists & Inventors",
-      slug: "scientists-inventors",
-      parentSlug: "figures-by-profession",
-      description: "Researchers, engineers, and innovators.",
-      order: 3,
     },
   ];
 
-  // Create or update all categories
-  for (const catData of categoriesData) {
+  for (const cat of categoriesData) {
     await prisma.category.upsert({
-      where: { slug: catData.slug },
+      where: { slug: cat.slug },
       update: {
-        name: catData.name,
-        description: catData.description,
-        order: catData.order,
+        name: cat.name,
+        description: cat.description,
+        order: cat.order,
       },
       create: {
-        name: catData.name,
-        slug: catData.slug,
-        description: catData.description,
-        order: catData.order,
+        name: cat.name,
+        slug: cat.slug,
+        description: cat.description,
+        order: cat.order,
       },
     });
   }
-
   console.log(`✅ Created/updated ${categoriesData.length} categories`);
 
-  // Get the main category for default content
-  const category = await prisma.category.findUnique({
+  const ancientCategory = await prisma.category.findUnique({
     where: { slug: "ancient-civilizations" },
   });
+  if (!ancientCategory)
+    throw new Error("Ancient civilizations category missing");
 
-  if (!category) {
-    throw new Error("Failed to create ancient-civilizations category");
-  }
-
+  // ==================== TOPIC ====================
   const topic = await prisma.topic.upsert({
-    where: { slug: "african-civilizations" },
-    update: {
-      name: "African Civilizations",
-      description: "Explore key civilizations and their legacies.",
-    },
+    where: { slug: "african-history" },
+    update: {},
     create: {
-      name: "African Civilizations",
-      slug: "african-civilizations",
-      description: "Explore key civilizations and their legacies.",
-      parentId: null,
+      name: "African History",
+      slug: "african-history",
+      description: "Explore the rich history of Africa",
     },
   });
 
-  const lessonSlug = "kama-intro-to-african-civilizations";
+  // ==================== MAIN LESSON ====================
+  const lessonSlug = "intro-african-civilizations";
   const lesson = await prisma.lesson.upsert({
     where: { slug: lessonSlug },
     update: {
-      title: "Intro: African Civilizations",
-      description: "A short introduction to key African civilizations.",
-      content:
-        "## Welcome\n\nAfrica is home to civilizations with deep history, innovation, and cultural influence.\n",
-      hook: "Start your journey into African history.",
+      title: "Introduction to African Civilizations",
+      subtitle: "A journey through time",
+      description: "Discover the great civilizations of Africa",
+      hook: "Start your journey!",
       published: true,
       xpReward: 10,
       isPremium: false,
-      categoryId: category.id,
+      categoryId: ancientCategory.id,
       topicId: topic.id,
       order: 0,
     },
     create: {
-      title: "Intro: African Civilizations",
+      title: "Introduction to African Civilizations",
       slug: lessonSlug,
-      description: "A short introduction to key African civilizations.",
-      content:
-        "## Welcome\n\nAfrica is home to civilizations with deep history, innovation, and cultural influence.\n",
-      hook: "Start your journey into African history.",
+      subtitle: "A journey through time",
+      description: "Discover the great civilizations of Africa",
+      hook: "Start your journey!",
       published: true,
       xpReward: 10,
       isPremium: false,
-      categoryId: category.id,
+      categoryId: ancientCategory.id,
       topicId: topic.id,
       order: 0,
     },
   });
 
-  // ==================== LESSON TRANSLATION ====================
-  // There is no separate Language table in your schema; translations store language as a String.
-  const lessonTranslationExisting = await prisma.lessonTranslation.findFirst({
-    where: { lessonId: lesson.id, language: "en" },
-    select: { id: true },
-  });
-
-  if (!lessonTranslationExisting) {
-    await prisma.lessonTranslation.create({
-      data: {
-        lessonId: lesson.id,
-        language: "en",
-        title: "Intro: African Civilizations",
-        description: "A short introduction to key African civilizations.",
-        hook: lesson.hook ?? undefined,
-        content: lesson.content,
-      },
-    });
-  }
-
-  // ==================== CHAPTERS + QUIZZES ====================
-  const chapterCount = await prisma.chapter.count({
-    where: { lessonId: lesson.id },
-  });
-  if (chapterCount === 0) {
-    await prisma.chapter.createMany({
-      data: [
-        {
-          lessonId: lesson.id,
-          title: "Chapter 1: Origins",
-          content:
-            "African civilizations developed through diverse regions, trade, governance, and knowledge systems.",
-          order: 0,
-          mediaType: "none",
-          mediaUrl: null,
-          feedbackQuestion: null,
-        },
-        {
-          lessonId: lesson.id,
-          title: "Chapter 2: Legacy",
-          content:
-            "Their legacies include architecture, astronomy, metallurgy, writing, and storytelling.",
-          order: 1,
-          mediaType: "none",
-          mediaUrl: null,
-          feedbackQuestion: null,
-        },
-      ],
-    });
-  }
-
-  const quizCount = await prisma.quiz.count({
-    where: { lessonId: lesson.id },
-  });
-  if (quizCount === 0) {
-    await prisma.quiz.create({
-      data: {
-        lessonId: lesson.id,
-        question:
-          "Which region is home to many early civilizations with deep historical influence?",
-        options: ["Europe", "Africa", "Antarctica", "Oceania"],
-        correctOption: 1,
-        explanation:
-          "Africa has been home to many civilizations with lasting cultural and intellectual legacies.",
-        order: 0,
-        heartLimit: 4,
-        timeLimitSeconds: null,
-        difficulty: "easy",
-        isActive: true,
-        tags: ["intro", "history"],
-        topicId: topic.id,
-      },
-    });
-  }
-
-  // ==================== CHARACTER ====================
-  const character = await prisma.character.upsert({
-    where: { slug: "kama-the-historian" },
-    update: {
-      name: "Kama the Historian",
-      description:
-        "A fictional guide that helps players learn African history.",
-      story:
-        "Kama collects stories, facts, and legends from across the continent.",
-      rarityLevel: "common",
-    },
-    create: {
-      name: "Kama the Historian",
-      slug: "kama-the-historian",
-      description:
-        "A fictional guide that helps players learn African history.",
-      story:
-        "Kama collects stories, facts, and legends from across the continent.",
-      imageUrl: null,
-      inventionImage: null,
-      xpThreshold: null,
-      rarityLevel: "common",
-      categories: {
-        create: [
-          {
-            categoryId: category.id,
-          },
-        ],
-      },
-    },
-  });
-
-  // Assign the intro lesson to Kama character
-  await prisma.characterLesson.upsert({
-    where: {
-      lessonId_characterId: {
-        lessonId: lesson.id,
-        characterId: character.id,
-      },
-    },
+  // Lesson translation (optional)
+  await prisma.lessonTranslation.upsert({
+    where: { id: "dummy" }, // workaround – use findFirst logic
     update: {},
     create: {
       lessonId: lesson.id,
-      characterId: character.id,
-      order: 0,
+      language: "en",
+      title: lesson.title,
+      description: lesson.description || "",
+      hook: lesson.hook || "",
     },
   });
 
-  const characterTranslationExisting =
-    await prisma.characterTranslation.findFirst({
-      where: { characterId: character.id, language: "en" },
-      select: { id: true },
-    });
-
-  if (!characterTranslationExisting) {
-    await prisma.characterTranslation.create({
+  // ==================== CHAPTERS AND STEPS ====================
+  const existingChapters = await prisma.chapter.findMany({
+    where: { lessonId: lesson.id },
+  });
+  if (existingChapters.length === 0) {
+    const chapter1 = await prisma.chapter.create({
       data: {
-        characterId: character.id,
-        language: "en",
-        name: "Kama",
-        description: "Your guide for African history.",
-        story: "Kama learns and shares stories.",
+        lessonId: lesson.id,
+        title: "The Nile Valley",
+        introText:
+          "The Nile River gave birth to one of the world's oldest civilizations.",
+        order: 0,
+        mediaType: "none",
       },
     });
+    const chapter2 = await prisma.chapter.create({
+      data: {
+        lessonId: lesson.id,
+        title: "West African Empires",
+        introText:
+          "Ghana, Mali, and Songhai – the gold trade and great leaders.",
+        order: 1,
+        mediaType: "none",
+      },
+    });
+
+    await prisma.chapterStep.createMany({
+      data: [
+        {
+          chapterId: chapter1.id,
+          order: 0,
+          type: "TEXT",
+          content: {
+            body: "Ancient Egypt and Nubia flourished along the Nile.",
+          },
+        },
+        {
+          chapterId: chapter1.id,
+          order: 1,
+          type: "CONTINUE_BUTTON",
+          content: { label: "Next" },
+        },
+        {
+          chapterId: chapter2.id,
+          order: 0,
+          type: "TEXT",
+          content: {
+            body: "Mansa Musa’s pilgrimage to Mecca showcased Mali's wealth.",
+          },
+        },
+        {
+          chapterId: chapter2.id,
+          order: 1,
+          type: "POLL",
+          content: {
+            question: "What interests you most?",
+            options: [
+              "Gold trade",
+              "Timbuktu",
+              "Islamic influence",
+              "Art & architecture",
+            ],
+          },
+        },
+        {
+          chapterId: chapter2.id,
+          order: 2,
+          type: "CONTINUE_BUTTON",
+          content: { label: "Complete" },
+        },
+      ],
+    });
+    console.log("✅ Created chapters and steps");
   }
 
-  // ==================== TEST USERS ====================
-  console.log("📝 Creating test users...");
+  // ==================== QUIZ ====================
+  await prisma.quiz.upsert({
+    where: { id: "dummy-quiz" }, // use findFirst
+    update: {},
+    create: {
+      lessonId: lesson.id,
+      question:
+        "Which African empire was known for its wealth under Mansa Musa?",
+      options: ["Ghana", "Mali", "Songhai", "Zimbabwe"],
+      correctOption: 1,
+      explanation: "Mali Empire, with Mansa Musa, was legendary for its gold.",
+      order: 0,
+      heartLimit: 4,
+      difficulty: "easy",
+      isActive: true,
+      tags: ["history", "medieval"],
+      topicId: topic.id,
+    },
+  });
 
+  // ==================== CHARACTER ====================
+  const character = await prisma.character.upsert({
+    where: { slug: "kama-guide" },
+    update: {},
+    create: {
+      name: "Kama",
+      slug: "kama-guide",
+      description: "Your wise guide through African history.",
+      story: "Kama has traveled across centuries to collect stories.",
+      rarityLevel: "common",
+      entityType: "person",
+      categories: { create: { categoryId: ancientCategory.id } },
+    },
+  });
+
+  // Character translation
+  await prisma.characterTranslation.upsert({
+    where: { id: "dummy-char-trans" },
+    update: {},
+    create: {
+      characterId: character.id,
+      language: "en",
+      name: "Kama",
+      description: "Your guide",
+      story: "Kama shares wisdom from the past.",
+    },
+  });
+
+  // ==================== TEST USERS ====================
   const testUsers = [
     {
       email: "student1@kamagame.com",
@@ -762,519 +307,149 @@ async function main() {
     },
   ];
 
-  for (const testUser of testUsers) {
-    const passwordHash = await bcrypt.hash(testUser.password, 10);
+  for (const u of testUsers) {
+    const hash = await bcrypt.hash(u.password, 10);
     await prisma.user.upsert({
-      where: { email: testUser.email },
+      where: { email: u.email },
       update: {},
       create: {
-        email: testUser.email,
-        username: testUser.username,
-        passwordHash,
-        role: testUser.role as any,
+        email: u.email,
+        username: u.username,
+        passwordHash: hash,
+        role: u.role as any,
         emailVerified: true,
       },
     });
   }
-
   console.log(`✅ Created ${testUsers.length} test users`);
 
-  // ==================== CHARACTER-LESSON PAIRS ====================
-  // Flow: Create Character → Create Lesson → Assign Lesson to Character
-  console.log("🎭📚 Creating character-lesson pairs...");
-
+  // ==================== ADDITIONAL LESSONS ====================
   const egyptCategory = await prisma.category.findUnique({
     where: { slug: "ancient-egypt" },
   });
-
-  const characterLessonPairs = [
+  const moreLessons = [
     {
-      characterName: "Nefertiti",
-      characterSlug: "nefertiti-queen",
-      characterDesc: "Egyptian queen known for her beauty and power",
-      characterStory: "Nefertiti was one of Egypt's most influential queens",
-      entityType: "person",
-      personType: "leader",
-      country: "Egypt",
-      rarityLevel: "rare",
-      lessonTitle: "Nefertiti: Queen of Egypt",
-      lessonSlug: "nefertiti-queen-lesson",
-      lessonDesc: "The story of one of Egypt's greatest queens",
-      lessonContent:
-        "# Nefertiti\n\nNefertiti ruled Egypt with wisdom and beauty...",
-      lessonHook: "Discover the power of Queen Nefertiti",
+      title: "Ancient Egypt: Pyramids and Pharaohs",
+      slug: "ancient-egypt-pyramids",
+      subtitle: "Monuments of eternity",
+      description: "Explore the wonders of ancient Egypt",
+      content:
+        "The pyramids of Giza, the Sphinx, and the pharaohs who built them.",
+      hook: "Uncover the secrets of the pyramids",
       xpReward: 25,
+      categoryId: egyptCategory?.id || ancientCategory.id,
+      topicId: topic.id,
+      published: true,
     },
     {
-      characterName: "Haile Selassie",
-      characterSlug: "haile-selassie-emperor",
-      characterDesc: "Emperor of Ethiopia and pan-African icon",
-      characterStory:
-        "Haile Selassie modernized Ethiopia and championed African unity",
-      entityType: "person",
-      personType: "leader",
-      country: "Ethiopia",
-      rarityLevel: "rare",
-      lessonTitle: "Haile Selassie: The Lion of Judah",
-      lessonSlug: "haile-selassie-emperor-lesson",
-      lessonDesc: "The emperor who led Ethiopia to independence",
-      lessonContent:
-        "# Haile Selassie\n\nHaile Selassie was a visionary leader...",
-      lessonHook: "Learn about Ethiopia's legendary emperor",
+      title: "Mansa Musa and the Mali Empire",
+      slug: "mansa-musa",
+      subtitle: "The richest man in history",
+      description: "The legendary pilgrimage of Mansa Musa",
+      content: "Mansa Musa's hajj to Mecca put Mali on the world map.",
+      hook: "Follow the golden trail",
       xpReward: 30,
-    },
-    {
-      characterName: "The Great Zimbabwe",
-      characterSlug: "great-zimbabwe-place",
-      characterDesc: "Ancient stone city in southern Africa",
-      characterStory: "Great Zimbabwe was a thriving trade center",
-      entityType: "place",
-      placeType: "monument",
-      country: "Zimbabwe",
-      rarityLevel: "legendary",
-      lessonTitle: "Great Zimbabwe: Ancient Trade Hub",
-      lessonSlug: "great-zimbabwe-lesson",
-      lessonDesc: "Explore the mysteries of Great Zimbabwe",
-      lessonContent:
-        "# Great Zimbabwe\n\nGreat Zimbabwe was a powerful trading empire...",
-      lessonHook: "Uncover the secrets of ancient Africa",
-      xpReward: 28,
-    },
-    {
-      characterName: "Zumbi dos Palmares",
-      characterSlug: "zumbi-palmares",
-      characterDesc: "Leader of Palmares, a free Black settlement in Brazil",
-      characterStory: "Zumbi led resistance against slavery",
-      entityType: "person",
-      personType: "activist",
-      country: "Brazil",
-      rarityLevel: "rare",
-      lessonTitle: "Zumbi: Resistance and Freedom",
-      lessonSlug: "zumbi-palmares-lesson",
-      lessonDesc: "The story of a legendary freedom fighter",
-      lessonContent:
-        "# Zumbi dos Palmares\n\nZumbi fought against enslavement...",
-      lessonHook: "Celebrate a hero of liberation",
-      xpReward: 25,
+      categoryId: ancientCategory.id,
+      topicId: topic.id,
+      published: true,
     },
   ];
 
-  const createdLessons: Awaited<ReturnType<typeof prisma.lesson.upsert>>[] = [];
-
-  for (const pair of characterLessonPairs) {
-    // 1. Create Character
-    const createdCharacter = await prisma.character.upsert({
-      where: { slug: pair.characterSlug },
+  for (const ld of moreLessons) {
+    await prisma.lesson.upsert({
+      where: { slug: ld.slug },
       update: {},
       create: {
-        name: pair.characterName,
-        slug: pair.characterSlug,
-        description: pair.characterDesc,
-        story: pair.characterStory,
-        entityType: pair.entityType,
-        personType: pair.personType,
-        placeType: pair.placeType,
-        country: pair.country,
-        rarityLevel: pair.rarityLevel,
-        imageUrl: null,
-        inventionImage: null,
-        xpThreshold: null,
-        categories: {
-          create: [
-            {
-              categoryId:
-                pair.entityType === "place"
-                  ? egyptCategory?.id || category.id
-                  : category.id,
-            },
-          ],
-        },
+        title: ld.title,
+        slug: ld.slug,
+        subtitle: ld.subtitle,
+        description: ld.description,
+        hook: ld.hook,
+        xpReward: ld.xpReward,
+        categoryId: ld.categoryId,
+        topicId: ld.topicId,
+        published: ld.published,
       },
     });
-
-    // 2. Create Lesson for this Character
-    const createdLesson = await prisma.lesson.upsert({
-      where: { slug: pair.lessonSlug },
-      update: {},
-      create: {
-        title: pair.lessonTitle,
-        slug: pair.lessonSlug,
-        description: pair.lessonDesc,
-        content: pair.lessonContent,
-        hook: pair.lessonHook,
-        xpReward: pair.xpReward,
-        categoryId:
-          pair.entityType === "place"
-            ? egyptCategory?.id || category.id
-            : category.id,
-        topicId: topic.id,
-        published: true,
-      },
-    });
-    createdLessons.push(createdLesson);
-
-    // 3. Assign Lesson to Character
-    await prisma.characterLesson.upsert({
-      where: {
-        lessonId_characterId: {
-          lessonId: createdLesson.id,
-          characterId: createdCharacter.id,
-        },
-      },
-      update: {},
-      create: {
-        lessonId: createdLesson.id,
-        characterId: createdCharacter.id,
-        order: 0,
-      },
-    });
-
-    // 4. Create Quizzes for this Lesson
-    const existingQuiz = await prisma.quiz.findFirst({
-      where: { lessonId: createdLesson.id },
-    });
-
-    if (!existingQuiz) {
-      await prisma.quiz.create({
-        data: {
-          lessonId: createdLesson.id,
-          question: `What was the main achievement of ${pair.characterName}?`,
-          options: [
-            "Cultural advancement",
-            "Military strength",
-            "Trade expansion",
-            "All of the above",
-          ],
-          correctOption: 3,
-          explanation:
-            "This historical figure achieved greatness across multiple fronts.",
-          order: 0,
-          heartLimit: 4,
-          difficulty: "medium",
-          isActive: true,
-          tags: ["history", "multiple-choice"],
-          topicId: topic.id,
-        },
-      });
-
-      await prisma.quiz.create({
-        data: {
-          lessonId: createdLesson.id,
-          question: `Is ${pair.characterName} still relevant today?`,
-          options: ["True", "False"],
-          correctOption: 0,
-          explanation: "Yes, these historical lessons continue to inspire us.",
-          order: 1,
-          heartLimit: 3,
-          difficulty: "easy",
-          isActive: true,
-          tags: ["reflection", "true-false"],
-          topicId: topic.id,
-        },
-      });
-    }
   }
-
-  console.log(
-    `✅ Created ${characterLessonPairs.length} character-lesson pairs`,
-  );
+  console.log(`✅ Created ${moreLessons.length} additional lessons`);
 
   // ==================== ACHIEVEMENTS ====================
-  console.log("🏆 Creating achievements...");
-
-  const achievementsData = [
+  const achievements = [
     {
-      name: "First Lesson",
+      name: "First Step",
       description: "Complete your first lesson",
       xpRequired: 0,
-      streakRequired: null,
     },
-    {
-      name: "Quiz Master",
-      description: "Complete 10 quizzes",
-      xpRequired: 100,
-      streakRequired: null,
-    },
-    {
-      name: "History Scholar",
-      description: "Earn 500 XP",
-      xpRequired: 500,
-      streakRequired: null,
-    },
-    {
-      name: "Week Warrior",
-      description: "Maintain a 7-day streak",
-      xpRequired: null,
-      streakRequired: 7,
-    },
-    {
-      name: "Legend",
-      description: "Maintain a 30-day streak",
-      xpRequired: null,
-      streakRequired: 30,
-    },
-    {
-      name: "Collector",
-      description: "Collect 5 characters",
-      xpRequired: 250,
-      streakRequired: null,
-    },
+    { name: "Curious Mind", description: "Complete 5 lessons", xpRequired: 50 },
+    { name: "History Buff", description: "Earn 200 XP", xpRequired: 200 },
   ];
-
-  const createdAchievements: Awaited<
-    ReturnType<typeof prisma.achievement.create>
-  >[] = [];
-  for (const achieveData of achievementsData) {
-    const achievement = await prisma.achievement.create({
-      data: {
-        name: achieveData.name,
-        description: achieveData.description,
-        xpRequired: achieveData.xpRequired,
-        streakRequired: achieveData.streakRequired,
+  for (const ach of achievements) {
+    await prisma.achievement.upsert({
+      where: { id: `dummy-${ach.name}` },
+      update: {},
+      create: {
+        name: ach.name,
+        description: ach.description,
+        xpRequired: ach.xpRequired,
       },
     });
-    createdAchievements.push(achievement);
   }
+  console.log(`✅ Created ${achievements.length} achievements`);
 
-  console.log(`✅ Created ${createdAchievements.length} achievements`);
-
-  // ==================== GAMIFICATION DATA ====================
-  console.log("💗 Setting up gamification data...");
-
+  // ==================== GAMIFICATION SETUP ====================
   const student1 = await prisma.user.findUnique({
     where: { email: "student1@kamagame.com" },
   });
-
   if (student1) {
-    // Create hearts for student1
     await prisma.userHearts.upsert({
       where: { userId: student1.id },
       update: {},
-      create: {
-        userId: student1.id,
-        hearts: 4,
-        maxHearts: 5,
-        lastHeartLossAt: null,
-        lastRecoveredAt: null,
-      },
+      create: { userId: student1.id, hearts: 5, maxHearts: 5 },
     });
-
-    // Create streak for student1
     await prisma.userStreak.upsert({
       where: { userId: student1.id },
       update: {},
       create: {
         userId: student1.id,
-        currentStreak: 5,
-        longestStreak: 12,
-        freezesRemaining: 3,
+        currentStreak: 3,
+        longestStreak: 3,
         lastActivityAt: new Date(),
       },
     });
-
-    // Add some streak check-ins
-    const today = new Date();
-    for (let i = 0; i < 5; i++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      date.setHours(0, 0, 0, 0); // Normalize to start of day
-
-      await prisma.streakCheckIn.upsert({
-        where: {
-          userId_date: {
-            userId: student1.id,
-            date,
-          },
-        },
-        update: {},
-        create: {
-          userId: student1.id,
-          date,
-          xpEarned: 50,
-          lessonCount: 2,
-          quizCount: 3,
-        },
-      });
-    }
-
-    // Create character progress
-    const charToCollect = await prisma.character.findFirst();
-    if (charToCollect) {
-      await prisma.userCharacterProgress.upsert({
-        where: {
-          userId_characterId: {
-            userId: student1.id,
-            characterId: charToCollect.id,
-          },
-        },
-        update: {},
-        create: {
-          userId: student1.id,
-          characterId: charToCollect.id,
-          favoriteLevel: 2,
-          isCollected: true,
-          unlockedAt: new Date(),
-        },
-      });
-    }
-
-    // Award some achievements
-    if (createdAchievements.length > 0) {
-      await prisma.userAchievement.upsert({
-        where: {
-          userId_achievementId: {
-            userId: student1.id,
-            achievementId: createdAchievements[0].id,
-          },
-        },
-        update: {},
-        create: {
-          userId: student1.id,
-          achievementId: createdAchievements[0].id,
-        },
-      });
-    }
-
-    // Add some XP
     await prisma.user.update({
       where: { id: student1.id },
-      data: {
-        xp: 250,
-        streak: 5,
-      },
+      data: { xp: 120, streak: 3 },
     });
   }
-
-  console.log(`✅ Set up gamification data for test user`);
-
-  // ==================== COMPLETED LESSONS ====================
-  console.log("✅ Recording completed lessons...");
-
-  if (student1 && createdLessons.length > 0) {
-    for (let i = 0; i < Math.min(2, createdLessons.length); i++) {
-      await prisma.completedLesson.upsert({
-        where: {
-          userId_lessonId: {
-            userId: student1.id,
-            lessonId: createdLessons[i].id,
-          },
-        },
-        update: {},
-        create: {
-          userId: student1.id,
-          lessonId: createdLessons[i].id,
-          xpEarned: 25,
-        },
-      });
-    }
-  }
-
-  console.log(`✅ Recorded completed lessons`);
-
-  // ==================== POLL DATA ====================
-  console.log("📊 Creating poll quizzes...");
-
-  const pollQuiz = await prisma.quiz.create({
-    data: {
-      lessonId: lesson.id,
-      question: "What aspect of African history interests you most?",
-      type: "poll",
-      isPoll: true,
-      pollDescription: "Help us understand your interests",
-      options: [
-        "Ancient Civilizations",
-        "Modern History",
-        "Culture & Arts",
-        "Science & Technology",
-      ],
-      correctOption: null,
-      order: 5,
-      heartLimit: 0,
-      difficulty: "easy",
-      isActive: true,
-      tags: ["poll", "feedback"],
-      topicId: topic.id,
-      pollResults: { "0": 12, "1": 8, "2": 15, "3": 5 },
-      totalPollVotes: 40,
-    },
-  });
-
-  console.log(`✅ Created poll quiz`);
-
-  // ==================== BOOKMARKS ====================
-  console.log("📌 Creating bookmarks...");
-
-  if (student1 && createdLessons.length > 0) {
-    await prisma.bookmark.upsert({
-      where: {
-        userId_lessonId: {
-          userId: student1.id,
-          lessonId: createdLessons[0].id,
-        },
-      },
-      update: {},
-      create: {
-        userId: student1.id,
-        lessonId: createdLessons[0].id,
-      },
-    });
-  }
-
-  console.log(`✅ Created bookmarks`);
 
   // ==================== DAILY CHALLENGES ====================
-  console.log("🎯 Creating daily challenges...");
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  const challenges = [
-    {
-      title: "Complete 3 Lessons",
-      description: "Finish 3 lessons today to earn bonus XP",
-      targetCount: 3,
-      rewardXp: 100,
-    },
-    {
-      title: "Pass 5 Quizzes",
-      description: "Score 100% on 5 quizzes",
-      targetCount: 5,
-      rewardXp: 150,
-    },
-    {
-      title: "Maintain Streak",
-      description: "Keep your learning streak alive",
-      targetCount: 1,
-      rewardXp: 50,
-    },
-    {
-      title: "Explore New Category",
-      description: "Learn from a new lesson category",
-      targetCount: 1,
-      rewardXp: 75,
-    },
-  ];
-
-  for (const challengeData of challenges) {
-    await prisma.dailyChallenge.create({
-      data: {
-        title: challengeData.title,
-        description: challengeData.description,
+  await prisma.dailyChallenge.createMany({
+    data: [
+      {
+        title: "Complete 1 lesson",
         challengeType: "lessons_completed",
-        targetCount: challengeData.targetCount,
-        xpReward: challengeData.rewardXp,
+        targetCount: 1,
+        xpReward: 50,
         active: true,
         startDate: today,
         endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000),
       },
-    });
-  }
+      {
+        title: "Answer 3 quiz questions",
+        challengeType: "quiz_correct",
+        targetCount: 3,
+        xpReward: 30,
+        active: true,
+        startDate: today,
+        endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+      },
+    ],
+  });
 
-  console.log(`✅ Created ${challenges.length} daily challenges`);
-
-  // ==================== GAMING CONFIG ====================
-  console.log("⚙️ Setting up gamification configuration...");
-
+  // ==================== GAME CONFIG ====================
   await prisma.gameConfig.upsert({
     where: { id: "gamification" },
     update: {},
@@ -1282,25 +457,19 @@ async function main() {
       id: "gamification",
       heartsMaxHearts: 5,
       heartsRecoveryTimeMs: 3600000,
-      heartsPremiumRecoveryTimeMs: 1800000,
       streaksCheckInHours: 24,
-      streaksXpMultiplierFormula: "1 + (currentStreak / 100)",
-      streaksMilestones: [7, 14, 30, 60, 100, 365],
+      streaksXpMultiplierFormula: "1 + (streak/100)",
+      streaksMilestones: [7, 30, 100],
       charactersUnlockXpThreshold: 100,
-      charactersPurchaseXpCost: 50,
       gamificationEnabled: true,
-      gamificationEventMultiplier: 1.0,
     },
   });
-
-  console.log(`✅ Configured gamification system`);
 
   console.log("✨ Seed completed successfully!");
 }
 
 main()
   .catch((e) => {
-    // eslint-disable-next-line no-console
     console.error(e);
     process.exit(1);
   })

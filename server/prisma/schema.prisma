@@ -130,10 +130,10 @@ model CharacterLesson {
 model Lesson {
   id          String   @id @default(cuid())
   title       String
+  subtitle    String   @default("")
   coverImage  String?
   slug        String   @unique
   description String?
-  content     String
   hook        String?
   xpReward    Int      @default(10)
   isPremium   Boolean  @default(false)
@@ -328,13 +328,14 @@ model LessonTranslation {
   language        String
   title           String
   description     String?
-  content         String
   hook            String?
   deepDiveContent String?
   createdAt       DateTime @default(now())
 
   lessonId String
   lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, language])
 }
 
 // ---------- Quiz Models ----------

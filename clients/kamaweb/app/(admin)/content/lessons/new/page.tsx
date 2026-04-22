@@ -23,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { FileUpload } from "@/components/file-upload";
 import { getAdminToken } from "@/lib/admin-auth";
 import {
+  assignLessonToCharacter,
   createAdminLesson,
   getAdminCategories,
   getAdminTopics,
@@ -43,9 +44,9 @@ export default function NewLessonPage() {
   const [form, setForm] = useState({
     characterId: "",
     title: "",
+    subtitle: "",
     slug: "",
     description: "",
-    content: "",
     hook: "",
     coverImage: "",
     xpReward: "10",
@@ -57,6 +58,7 @@ export default function NewLessonPage() {
     titleAudioUrl: "",
     hookAudioUrl: "",
     contentAudioUrl: "",
+    deepDiveContent: "",
     deepDiveAudioUrl: "",
   });
 
@@ -84,9 +86,9 @@ export default function NewLessonPage() {
     try {
       const lesson = await createAdminLesson(token, {
         title: form.title.trim(),
+        subtitle: form.subtitle.trim() || "",
         slug: form.slug.trim() || undefined,
         description: form.description.trim() || null,
-        content: form.content,
         hook: form.hook.trim() || null,
         coverImage: form.coverImage.trim() || "",
         xpReward: Number(form.xpReward) || 10,
@@ -95,11 +97,19 @@ export default function NewLessonPage() {
         isPremium: form.isPremium,
         categoryId: form.categoryId || null,
         topicId: form.topicId || null,
+        deepDiveContent: form.deepDiveContent.trim() || null,
         titleAudioUrl: form.titleAudioUrl.trim() || null,
         hookAudioUrl: form.hookAudioUrl.trim() || null,
         contentAudioUrl: form.contentAudioUrl.trim() || null,
         deepDiveAudioUrl: form.deepDiveAudioUrl.trim() || null,
       });
+
+      if (form.characterId) {
+        await assignLessonToCharacter(token, form.characterId, {
+          lessonId: lesson.id,
+        });
+      }
+
       toast.success("Lesson created");
       router.replace(`/content/lessons/${lesson.id}`);
     } catch (err) {
@@ -172,6 +182,17 @@ export default function NewLessonPage() {
               value={form.title}
               onChange={(e) =>
                 setForm((f) => ({ ...f, title: e.target.value }))
+              }
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="subtitle">Subtitle</Label>
+            <Input
+              id="subtitle"
+              placeholder="e.g., Queen of Egypt's 18th Dynasty"
+              value={form.subtitle}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, subtitle: e.target.value }))
               }
             />
           </div>
@@ -271,6 +292,18 @@ export default function NewLessonPage() {
             />
           </div>
           <div className="grid gap-2">
+            <Label htmlFor="deepDive">Deep Dive Content (optional)</Label>
+            <Textarea
+              id="deepDive"
+              className="min-h-32"
+              placeholder="Extended learning content for deep divers"
+              value={form.deepDiveContent}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, deepDiveContent: e.target.value }))
+              }
+            />
+          </div>
+          <div className="grid gap-2">
             <Label htmlFor="deepDiveAudio">
               Deep Dive Audio URL (optional)
             </Label>
@@ -280,17 +313,6 @@ export default function NewLessonPage() {
               value={form.deepDiveAudioUrl}
               onChange={(e) =>
                 setForm((f) => ({ ...f, deepDiveAudioUrl: e.target.value }))
-              }
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="content">Body</Label>
-            <Textarea
-              id="content"
-              className="min-h-40"
-              value={form.content}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, content: e.target.value }))
               }
             />
           </div>

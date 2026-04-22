@@ -12,6 +12,14 @@ import type {
   CharacterLessonAdmin,
   CharacterTranslationAdmin,
   Chapter,
+  ChapterStep,
+  ChapterProgress,
+  InteractiveChapter,
+  StepType,
+  StepContent,
+  StepResponse,
+  LessonProgress,
+  LessonInteractiveInfo,
   Lesson,
   LessonTranslationAdmin,
   MeUser,
@@ -36,6 +44,8 @@ import type {
   GamificationSummary,
   FreezeStreakResponse,
   StreakCheckInResponse,
+  ChapterCompletion,
+  ChapterDetail,
 } from "@/lib/kama-types";
 
 // Use the local Next.js API proxy instead of calling backend directly
@@ -379,9 +389,9 @@ export async function createAdminLesson(
   token: string,
   payload: {
     title: string;
+    subtitle?: string;
     slug?: string;
     description?: string | null;
-    content?: string;
     hook?: string | null;
     coverImage?: string | null;
     xpReward?: number;
@@ -395,7 +405,6 @@ export async function createAdminLesson(
     hookAudioUrl?: string | null; // NEW
     contentAudioUrl?: string | null; // NEW
     deepDiveAudioUrl?: string | null; // NEW
-    characterIds?: string[]; // NEW
   },
 ): Promise<AdminLessonDetail> {
   const data = await apiRequest<{ lesson: AdminLessonDetail }>(
@@ -414,9 +423,9 @@ export async function updateAdminLesson(
   lessonId: string,
   payload: Partial<{
     title: string;
+    subtitle: string;
     slug: string;
     description: string | null;
-    content: string;
     hook: string | null;
     coverImage: string | null;
     xpReward: number;
@@ -458,6 +467,8 @@ export async function createAdminChapter(
     title: string;
     content: string;
     coverImage?: string | null;
+    introText?: string | null;
+    introAudioUrl?: string | null;
     mediaType?: string | null;
     mediaUrl?: string | null;
     feedbackQuestion?: string | null;
@@ -482,6 +493,8 @@ export async function updateAdminChapter(
     title: string;
     content: string;
     coverImage: string | null;
+    introText: string | null;
+    introAudioUrl: string | null;
     mediaType: string | null;
     mediaUrl: string | null;
     feedbackQuestion: string | null;
@@ -669,7 +682,7 @@ export async function createLessonTranslation(
     language: string;
     title: string;
     description?: string | null;
-    content: string;
+    content?: string;
     hook?: string | null;
     deepDiveContent?: string | null;
   },
@@ -2480,4 +2493,227 @@ export async function updateGamificationConfig(
     method: "PUT",
     body: config,
   });
+}
+
+// ==================== INTERACTIVE CHAPTERS API ====================
+
+/**
+ * Create a chapter step (admin)
+ */
+export async function createChapterStep(
+  token: string,
+  lessonId: string,
+  chapterId: string,
+  step: {
+    order: number;
+    type: StepType;
+    content: StepContent;
+    mediaUrl?: string;
+    mediaType?: "image" | "video" | "none";
+  },
+): Promise<ChapterStep> {
+  const response = await apiRequest<{ step: ChapterStep }>(
+    `/content/admin/lessons/${lessonId}/chapters/${chapterId}/steps`,
+    {
+      token,
+      method: "POST",
+      body: step,
+    },
+  );
+  return response.step;
+}
+
+/**
+ * Update a chapter step (admin)
+ */
+export async function updateChapterStep(
+  token: string,
+  lessonId: string,
+  chapterId: string,
+  stepId: string,
+  updates: Partial<{
+    order: number;
+    type: StepType;
+    content: StepContent;
+    mediaUrl: string;
+    mediaType: "image" | "video" | "none";
+  }>,
+): Promise<ChapterStep> {
+  const response = await apiRequest<{ step: ChapterStep }>(
+    `/content/admin/lessons/${lessonId}/chapters/${chapterId}/steps/${stepId}`,
+    {
+      token,
+      method: "PATCH",
+      body: updates,
+    },
+  );
+  return response.step;
+}
+
+/**
+ * Delete a chapter step (admin)
+ */
+export async function deleteChapterStep(
+  token: string,
+  lessonId: string,
+  chapterId: string,
+  stepId: string,
+): Promise<void> {
+  await apiRequest<void>(
+    `/content/admin/lessons/${lessonId}/chapters/${chapterId}/steps/${stepId}`,
+    {
+      token,
+      method: "DELETE",
+    },
+  );
+}
+
+/**
+ * Reorder chapter steps (admin)
+ */
+export async function reorderChapterSteps(
+  token: string,
+  lessonId: string,
+  chapterId: string,
+  stepIds: string[],
+): Promise<void> {
+  await apiRequest<void>(
+    `/content/admin/lessons/${lessonId}/chapters/${chapterId}/reorder-steps`,
+    {
+      token,
+      method: "POST",
+      body: { stepIds },
+    },
+  );
+}
+
+/**
+ * Get chapter with all steps (public/admin)
+ */
+export async function getChapterWithSteps(
+  token: string,
+  chapterId: string,
+): Promise<InteractiveChapter> {
+  const response = await apiRequest<{ chapter: InteractiveChapter }>(
+    `/content/chapters/${chapterId}`,
+    { token },
+  );
+  return response.chapter;
+}
+
+/**
+ * Get user chapter progress (public)
+ */
+export async function getChapterProgress(
+  token: string,
+  chapterId: string,
+): Promise<ChapterProgress | null> {
+  const response = await apiRequest<{ progress: ChapterProgress | null }>(
+    `/content/chapters/${chapterId}/progress`,
+    { token },
+  );
+  return response.progress;
+}
+
+/**
+ * Record a step response and advance progress (public)
+ */
+export async function respondToChapterStep(
+  token: string,
+  lessonId: string,
+  chapterId: string,
+  stepId: string,
+  response: {
+    type: "poll" | "choice" | "quiz";
+    selectedOption: number;
+    chosenStepId?: string;
+  },
+): Promise<{ success: boolean; response: StepResponse }> {
+  const result = await apiRequest<{
+    success: boolean;
+    response: StepResponse;
+  }>(
+    `/content/lessons/${lessonId}/chapters/${chapterId}/steps/${stepId}/respond`,
+    {
+      token,
+      method: "POST",
+      body: response,
+    },
+  );
+  return result;
+}
+
+/**
+ * Get user step response (public)
+ */
+export async function getStepResponse(
+  token: string,
+  chapterId: string,
+  stepId: string,
+): Promise<StepResponse | null> {
+  const response = await apiRequest<{ response: StepResponse | null }>(
+    `/content/chapters/${chapterId}/steps/${stepId}/my-response`,
+    { token },
+  );
+  return response.response;
+}
+
+/**
+ * Advance to next step (public)
+ */
+export async function advanceChapterStep(
+  token: string,
+  lessonId: string,
+  chapterId: string,
+  fromStepIndex: number,
+): Promise<{ success: boolean; progress: ChapterProgress }> {
+  const result = await apiRequest<{
+    success: boolean;
+    progress: ChapterProgress;
+  }>(`/content/lessons/${lessonId}/chapters/${chapterId}/advance`, {
+    token,
+    method: "POST",
+    body: { fromStepIndex },
+  });
+  return result;
+}
+
+/**
+ * Complete a chapter (public)
+ */
+export async function completeChapter(
+  token: string,
+  lessonId: string,
+  chapterId: string,
+): Promise<{
+  success: boolean;
+  progress: ChapterProgress;
+  completion: ChapterCompletion;
+}> {
+  const result = await apiRequest<{
+    success: boolean;
+    progress: ChapterProgress;
+    completion: ChapterCompletion;
+  }>(
+    `/content/lessons/${lessonId}/chapters/${chapterId}/complete`,
+    {
+      token,
+      method: "POST",
+    },
+  );
+  return result;
+}
+
+/**
+ * Get lesson with all chapters (public)
+ */
+export async function getLessonWithChapters(
+  token: string,
+  lessonId: string,
+): Promise<LessonInteractiveInfo> {
+  const response = await apiRequest<LessonInteractiveInfo>(
+    `/content/lessons/${lessonId}/interactive`,
+    { token },
+  );
+  return response;
 }

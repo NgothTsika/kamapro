@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Zap } from "lucide-react";
+import { ArrowLeft, Languages, Plus, Trash2 } from "lucide-react";
 import {
   EnhancedQuizDialog,
   type QuizFormData,
@@ -91,9 +91,9 @@ export default function EditLessonPage() {
 
   const [form, setForm] = useState({
     title: "",
+    subtitle: "",
     slug: "",
     description: "",
-    content: "",
     hook: "",
     coverImage: "",
     xpReward: "10",
@@ -107,7 +107,7 @@ export default function EditLessonPage() {
     hookAudioUrl: "",
     contentAudioUrl: "",
     deepDiveAudioUrl: "",
-    characterId: "" as string, // UPDATED: single character, not array
+    characterId: "" as string,
   });
 
   const [chapterOpen, setChapterOpen] = useState(false);
@@ -117,6 +117,9 @@ export default function EditLessonPage() {
     order: "0",
     mediaType: "",
     mediaUrl: "",
+    feedbackQuestion: "",
+    introText: "",
+    introAudioUrl: "",
   });
   const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
 
@@ -132,7 +135,6 @@ export default function EditLessonPage() {
     language: "",
     title: "",
     description: "",
-    content: "",
     hook: "",
     deepDiveContent: "",
   });
@@ -170,9 +172,9 @@ export default function EditLessonPage() {
       setCharacters(ch);
       setForm({
         title: l.title,
+        subtitle: l.subtitle ?? "",
         slug: l.slug,
         description: l.description ?? "",
-        content: l.content,
         hook: l.hook ?? "",
         coverImage: l.coverImage ?? "",
         xpReward: String(l.xpReward),
@@ -186,7 +188,7 @@ export default function EditLessonPage() {
         hookAudioUrl: l.hookAudioUrl ?? "",
         contentAudioUrl: l.contentAudioUrl ?? "",
         deepDiveAudioUrl: l.deepDiveAudioUrl ?? "",
-        characterId: l.relatedCharacters?.[0]?.character.id ?? "", // UPDATED: single character
+        characterId: l.relatedCharacters?.[0]?.character.id ?? "",
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load lesson");
@@ -206,9 +208,9 @@ export default function EditLessonPage() {
     try {
       await updateAdminLesson(token, lesson.id, {
         title: form.title.trim(),
+        subtitle: form.subtitle.trim(),
         slug: form.slug.trim() || undefined,
         description: form.description.trim() || null,
-        content: form.content,
         hook: form.hook.trim() || null,
         coverImage: form.coverImage.trim() || "",
         xpReward: Number(form.xpReward) || 0,
@@ -222,7 +224,7 @@ export default function EditLessonPage() {
         hookAudioUrl: form.hookAudioUrl.trim() || null,
         contentAudioUrl: form.contentAudioUrl.trim() || null,
         deepDiveAudioUrl: form.deepDiveAudioUrl.trim() || null,
-        characterId: form.characterId || null, // UPDATED: single character
+        characterId: form.characterId || null,
       });
       toast.success("Lesson saved");
       await load();
@@ -241,6 +243,9 @@ export default function EditLessonPage() {
       order: "0",
       mediaType: "",
       mediaUrl: "",
+      feedbackQuestion: "",
+      introText: "",
+      introAudioUrl: "",
     });
     setChapterOpen(true);
   }
@@ -249,10 +254,13 @@ export default function EditLessonPage() {
     setEditingChapter(ch);
     setChapterForm({
       title: ch.title,
-      content: ch.content,
+      content: ch.content ?? "",
       order: String(ch.order),
       mediaType: ch.mediaType ?? "",
       mediaUrl: ch.mediaUrl ?? "",
+      feedbackQuestion: ch.feedbackQuestion ?? "",
+      introText: ch.introText ?? "",
+      introAudioUrl: ch.introAudioUrl ?? "",
     });
     setChapterOpen(true);
   }
@@ -264,19 +272,25 @@ export default function EditLessonPage() {
       if (editingChapter) {
         await updateAdminChapter(token, editingChapter.id, {
           title: chapterForm.title.trim(),
-          content: chapterForm.content,
+          content: chapterForm.content.trim() || "",
           order: Number(chapterForm.order) || 0,
           mediaType: chapterForm.mediaType || null,
           mediaUrl: chapterForm.mediaUrl.trim() || null,
+          feedbackQuestion: chapterForm.feedbackQuestion.trim() || null,
+          introText: chapterForm.introText.trim() || null,
+          introAudioUrl: chapterForm.introAudioUrl.trim() || null,
         });
         toast.success("Chapter updated");
       } else {
         await createAdminChapter(token, lesson.id, {
           title: chapterForm.title.trim(),
-          content: chapterForm.content,
+          content: chapterForm.content.trim() || "",
           order: Number(chapterForm.order) || 0,
           mediaType: chapterForm.mediaType || null,
           mediaUrl: chapterForm.mediaUrl.trim() || null,
+          feedbackQuestion: chapterForm.feedbackQuestion.trim() || null,
+          introText: chapterForm.introText.trim() || null,
+          introAudioUrl: chapterForm.introAudioUrl.trim() || null,
         });
         toast.success("Chapter added");
       }
@@ -355,13 +369,31 @@ export default function EditLessonPage() {
     }
   }
 
+  async function openQuizTranslationManager(q: QuizAdmin) {
+    const token = getAdminToken();
+    if (!token) return;
+
+    setQuizForTr(q);
+    setQuizTrManageOpen(true);
+    setQuizTrListLoading(true);
+    try {
+      const trList = await getQuizTranslations(token, q.id);
+      setQuizTrList(trList);
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Failed to load translations",
+      );
+    } finally {
+      setQuizTrListLoading(false);
+    }
+  }
+
   function openNewTranslation() {
     setEditingTranslation(null);
     setTranslationForm({
       language: "",
       title: "",
       description: "",
-      content: "",
       hook: "",
       deepDiveContent: "",
     });
@@ -374,7 +406,6 @@ export default function EditLessonPage() {
       language: t.language,
       title: t.title,
       description: t.description ?? "",
-      content: t.content,
       hook: t.hook ?? "",
       deepDiveContent: t.deepDiveContent ?? "",
     });
@@ -389,12 +420,11 @@ export default function EditLessonPage() {
       language: translationForm.language.trim(),
       title: translationForm.title.trim(),
       description: translationForm.description.trim() || null,
-      content: translationForm.content,
       hook: translationForm.hook.trim() || null,
       deepDiveContent: translationForm.deepDiveContent.trim() || null,
     };
-    if (!payload.language || !payload.title || !payload.content.trim()) {
-      toast.error("Language, title and content are required");
+    if (!payload.language || !payload.title) {
+      toast.error("Language and title are required");
       return;
     }
 
@@ -596,6 +626,17 @@ export default function EditLessonPage() {
                 />
               </div>
               <div className="grid gap-2">
+                <Label htmlFor="subtitle">Subtitle</Label>
+                <Input
+                  id="subtitle"
+                  placeholder="Optional subtitle or tagline"
+                  value={form.subtitle}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, subtitle: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="slug">Slug</Label>
                 <Input
                   id="slug"
@@ -658,17 +699,6 @@ export default function EditLessonPage() {
                   value={form.hook}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, hook: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="content">Body</Label>
-                <Textarea
-                  id="content"
-                  className="min-h-48"
-                  value={form.content}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, content: e.target.value }))
                   }
                 />
               </div>
@@ -853,13 +883,23 @@ export default function EditLessonPage() {
               <div>
                 <CardTitle>Chapters</CardTitle>
                 <CardDescription>
-                  Ordered segments inside this lesson.
+                  Ordered segments inside this lesson. Open the chapter builder
+                  to manage interactive steps.
                 </CardDescription>
               </div>
-              <Button onClick={openNewChapter}>
-                <Plus className="size-4" />
-                Add chapter
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={openNewChapter}>
+                  <Plus className="size-4" />
+                  Quick add
+                </Button>
+                <Button
+                  onClick={() =>
+                    router.push(`/content/lessons/${lessonId}/chapters`)
+                  }
+                >
+                  Open chapter builder
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -867,21 +907,38 @@ export default function EditLessonPage() {
                   <TableRow>
                     <TableHead>Title</TableHead>
                     <TableHead>Order</TableHead>
+                    <TableHead>Experience</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lesson.chapters.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3}>No chapters yet.</TableCell>
+                      <TableCell colSpan={4}>No chapters yet.</TableCell>
                     </TableRow>
                   ) : (
                     lesson.chapters.map((ch) => (
                       <TableRow key={ch.id}>
                         <TableCell>{ch.title}</TableCell>
                         <TableCell>{ch.order}</TableCell>
+                        <TableCell>
+                          {ch.introText || ch.feedbackQuestion
+                            ? "Interactive ready"
+                            : "Basic chapter"}
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                router.push(
+                                  `/content/lessons/${lessonId}/chapters/${ch.id}`,
+                                )
+                              }
+                            >
+                              Builder
+                            </Button>
                             <Button
                               variant="outline"
                               size="sm"
@@ -944,6 +1001,14 @@ export default function EditLessonPage() {
                         <TableCell>{q.order}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void openQuizTranslationManager(q)}
+                            >
+                              <Languages className="size-4" />
+                              Translations
+                            </Button>
                             <Button
                               variant="outline"
                               size="sm"
@@ -1056,12 +1121,39 @@ export default function EditLessonPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>Content</Label>
+              <Label>Intro Text (shown before steps)</Label>
               <Textarea
                 className="min-h-32"
-                value={chapterForm.content}
+                placeholder="Introduction text for this chapter..."
+                value={chapterForm.introText}
                 onChange={(e) =>
-                  setChapterForm((f) => ({ ...f, content: e.target.value }))
+                  setChapterForm((f) => ({ ...f, introText: e.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Intro Audio URL (optional)</Label>
+              <Input
+                placeholder="https://..."
+                value={chapterForm.introAudioUrl}
+                onChange={(e) =>
+                  setChapterForm((f) => ({
+                    ...f,
+                    introAudioUrl: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Feedback Question (optional)</Label>
+              <Input
+                placeholder="Question to ask after chapter completion..."
+                value={chapterForm.feedbackQuestion}
+                onChange={(e) =>
+                  setChapterForm((f) => ({
+                    ...f,
+                    feedbackQuestion: e.target.value,
+                  }))
                 }
               />
             </div>
@@ -1213,16 +1305,6 @@ export default function EditLessonPage() {
                 value={translationForm.hook}
                 onChange={(e) =>
                   setTranslationForm((f) => ({ ...f, hook: e.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>Content</Label>
-              <Textarea
-                className="min-h-32"
-                value={translationForm.content}
-                onChange={(e) =>
-                  setTranslationForm((f) => ({ ...f, content: e.target.value }))
                 }
               />
             </div>

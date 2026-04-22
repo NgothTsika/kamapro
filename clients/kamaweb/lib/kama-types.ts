@@ -127,6 +127,8 @@ export type Chapter = {
   title: string;
   coverImage: string | null;
   content: string;
+  introText: string | null;
+  introAudioUrl: string | null;
   mediaType: string | null;
   mediaUrl: string | null;
   feedbackQuestion: string | null;
@@ -188,7 +190,6 @@ export type LessonTranslationAdmin = {
   language: string;
   title: string;
   description: string | null;
-  content: string;
   hook: string | null;
   deepDiveContent: string | null;
   createdAt: string;
@@ -198,8 +199,8 @@ export type AdminLessonDetail = {
   id: string;
   slug: string;
   title: string;
+  subtitle: string;
   description: string | null;
-  content: string;
   hook: string | null;
   coverImage: string | null;
   xpReward: number;
@@ -209,10 +210,10 @@ export type AdminLessonDetail = {
   categoryId: string | null;
   topicId: string | null;
   deepDiveContent: string | null;
-  titleAudioUrl?: string | null; // NEW: Audio for lesson title
-  hookAudioUrl?: string | null; // NEW: Audio for intro/hook
-  contentAudioUrl?: string | null; // NEW: Audio narration for main content
-  deepDiveAudioUrl?: string | null; // NEW: Audio for deep dive content
+  titleAudioUrl?: string | null;
+  hookAudioUrl?: string | null;
+  contentAudioUrl?: string | null;
+  deepDiveAudioUrl?: string | null;
   category: { id: string; name: string; slug: string } | null;
   topic: { id: string; name: string; slug: string } | null;
   chapters: Chapter[];
@@ -340,9 +341,9 @@ export type Lesson = {
   id: string;
   slug: string;
   title: string;
+  subtitle: string;
   description: string | null;
   hook: string | null;
-  content: string;
   coverImage: string | null;
   xpReward: number;
   isPremium: boolean;
@@ -350,10 +351,10 @@ export type Lesson = {
   topic: { id: string; name: string; slug: string } | null;
   chapters: Chapter[];
   quizzes: Quiz[];
-  titleAudioUrl?: string | null; // NEW: Audio for lesson title
-  hookAudioUrl?: string | null; // NEW: Audio for intro/hook
-  contentAudioUrl?: string | null; // NEW: Audio narration for main content
-  deepDiveAudioUrl?: string | null; // NEW: Audio for deep dive content
+  titleAudioUrl?: string | null;
+  hookAudioUrl?: string | null;
+  contentAudioUrl?: string | null;
+  deepDiveAudioUrl?: string | null;
 };
 
 export type Character = {
@@ -908,4 +909,86 @@ export type LessonDifficultyAnalysis = {
       abandonmentRate: number;
     }
   >;
+};
+
+// ==================== INTERACTIVE CHAPTERS TYPES ====================
+
+export type StepType =
+  | "TEXT"
+  | "TEXT_AUDIO"
+  | "IMAGE_FULL"
+  | "POLL"
+  | "CHOICE"
+  | "QUIZ_QUESTION"
+  | "RECAP"
+  | "CONTINUE_BUTTON";
+
+export type StepContent = Record<string, any>;
+
+export type ChapterStep = {
+  id: string;
+  chapterId: string;
+  order: number;
+  type: StepType;
+  content: StepContent;
+  mediaUrl?: string | null;
+  mediaType?: "image" | "video" | "none" | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InteractiveChapter = {
+  id: string;
+  lessonId: string;
+  title: string;
+  order: number;
+  introText?: string | null;
+  introAudioUrl?: string | null;
+  steps: ChapterStep[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChapterProgress = {
+  id: string;
+  userId: string;
+  chapterId: string;
+  currentStepIndex: number;
+  completed: boolean;
+  completedAt?: string | null;
+};
+
+export type ChapterCompletion = {
+  id: string;
+  userId: string;
+  chapterId: string;
+  completedAt: string;
+};
+
+export type LessonProgress = {
+  id: string;
+  userId: string;
+  lessonId: string;
+  currentChapterIndex: number;
+  updatedAt: string;
+};
+
+export type ChapterDetail = InteractiveChapter & {
+  progress?: ChapterProgress | null;
+};
+
+export type LessonInteractiveInfo = {
+  lesson: Lesson & {
+    chapters: InteractiveChapter[];
+  };
+  progress?: LessonProgress | null;
+};
+
+export type StepResponse = {
+  id: string;
+  userId: string;
+  stepId: string;
+  selectedOption: number;
+  chosenStepId?: string | null;
+  createdAt: string;
 };

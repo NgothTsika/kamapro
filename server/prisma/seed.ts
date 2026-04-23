@@ -151,8 +151,17 @@ async function main() {
 
   // Lesson translation (optional)
   await prisma.lessonTranslation.upsert({
-    where: { id: "dummy" }, // workaround – use findFirst logic
-    update: {},
+    where: {
+      lessonId_language: {
+        lessonId: lesson.id,
+        language: "en",
+      },
+    },
+    update: {
+      title: lesson.title,
+      description: lesson.description || "",
+      hook: lesson.hook || "",
+    },
     create: {
       lessonId: lesson.id,
       language: "en",
@@ -238,24 +247,30 @@ async function main() {
   }
 
   // ==================== QUIZ ====================
-  await prisma.quiz.upsert({
-    where: { id: "dummy-quiz" }, // use findFirst
-    update: {},
-    create: {
-      lessonId: lesson.id,
-      question:
-        "Which African empire was known for its wealth under Mansa Musa?",
-      options: ["Ghana", "Mali", "Songhai", "Zimbabwe"],
-      correctOption: 1,
-      explanation: "Mali Empire, with Mansa Musa, was legendary for its gold.",
-      order: 0,
-      heartLimit: 4,
-      difficulty: "easy",
-      isActive: true,
-      tags: ["history", "medieval"],
-      topicId: topic.id,
-    },
+  const quizData = {
+    lessonId: lesson.id,
+    question: "Which African empire was known for its wealth under Mansa Musa?",
+    options: ["Ghana", "Mali", "Songhai", "Zimbabwe"],
+    correctOption: 1,
+    explanation: "Mali Empire, with Mansa Musa, was legendary for its gold.",
+    order: 0,
+    heartLimit: 4,
+    difficulty: "easy",
+    isActive: true,
+    tags: ["history", "medieval"],
+    topicId: topic.id,
+  };
+  const existingQuiz = await prisma.quiz.findFirst({
+    where: { lessonId: lesson.id, order: quizData.order },
   });
+  if (existingQuiz) {
+    await prisma.quiz.update({
+      where: { id: existingQuiz.id },
+      data: quizData,
+    });
+  } else {
+    await prisma.quiz.create({ data: quizData });
+  }
 
   // ==================== CHARACTER ====================
   const character = await prisma.character.upsert({
@@ -274,8 +289,17 @@ async function main() {
 
   // Character translation
   await prisma.characterTranslation.upsert({
-    where: { id: "dummy-char-trans" },
-    update: {},
+    where: {
+      characterId_language: {
+        characterId: character.id,
+        language: "en",
+      },
+    },
+    update: {
+      name: "Kama",
+      description: "Your guide",
+      story: "Kama shares wisdom from the past.",
+    },
     create: {
       characterId: character.id,
       language: "en",
@@ -385,15 +409,26 @@ async function main() {
     { name: "History Buff", description: "Earn 200 XP", xpRequired: 200 },
   ];
   for (const ach of achievements) {
-    await prisma.achievement.upsert({
-      where: { id: `dummy-${ach.name}` },
-      update: {},
-      create: {
-        name: ach.name,
-        description: ach.description,
-        xpRequired: ach.xpRequired,
-      },
+    const existingAchievement = await prisma.achievement.findFirst({
+      where: { name: ach.name },
     });
+    if (existingAchievement) {
+      await prisma.achievement.update({
+        where: { id: existingAchievement.id },
+        data: {
+          description: ach.description,
+          xpRequired: ach.xpRequired,
+        },
+      });
+    } else {
+      await prisma.achievement.create({
+        data: {
+          name: ach.name,
+          description: ach.description,
+          xpRequired: ach.xpRequired,
+        },
+      });
+    }
   }
   console.log(`✅ Created ${achievements.length} achievements`);
 
@@ -426,28 +461,42 @@ async function main() {
   // ==================== DAILY CHALLENGES ====================
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  await prisma.dailyChallenge.createMany({
-    data: [
-      {
-        title: "Complete 1 lesson",
-        challengeType: "lessons_completed",
-        targetCount: 1,
-        xpReward: 50,
-        active: true,
-        startDate: today,
-        endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+  const dailyChallenges = [
+    {
+      title: "Complete 1 lesson",
+      challengeType: "lessons_completed",
+      targetCount: 1,
+      xpReward: 50,
+      active: true,
+      startDate: today,
+      endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+    },
+    {
+      title: "Answer 3 quiz questions",
+      challengeType: "quiz_correct",
+      targetCount: 3,
+      xpReward: 30,
+      active: true,
+      startDate: today,
+      endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+    },
+  ];
+  for (const challenge of dailyChallenges) {
+    const existingChallenge = await prisma.dailyChallenge.findFirst({
+      where: {
+        title: challenge.title,
+        startDate: challenge.startDate,
       },
-      {
-        title: "Answer 3 quiz questions",
-        challengeType: "quiz_correct",
-        targetCount: 3,
-        xpReward: 30,
-        active: true,
-        startDate: today,
-        endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000),
-      },
-    ],
-  });
+    });
+    if (existingChallenge) {
+      await prisma.dailyChallenge.update({
+        where: { id: existingChallenge.id },
+        data: challenge,
+      });
+    } else {
+      await prisma.dailyChallenge.create({ data: challenge });
+    }
+  }
 
   // ==================== GAME CONFIG ====================
   await prisma.gameConfig.upsert({

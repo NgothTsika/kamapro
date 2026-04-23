@@ -199,6 +199,7 @@ model Chapter {
 
   // NEW: Interactive steps inside this chapter
   steps ChapterStep[]
+  quizzes Quiz[]
 
   // NEW: User chapter progress and completions
   chapterProgress    UserChapterProgress[]
@@ -343,6 +344,8 @@ model Quiz {
   id               String   @id @default(cuid())
   lessonId         String
   lesson           Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  chapterId        String?
+  chapter          Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
   question         String
   type             String   @default("multiple_choice")
   options          Json
@@ -374,6 +377,8 @@ model Quiz {
   attempts        QuizAttempt[]
   translations    QuizTranslation[]
   pollVotes       PollVote[]
+
+  @@index([lessonId, chapterId, order])
 }
 
 model QuizTranslation {

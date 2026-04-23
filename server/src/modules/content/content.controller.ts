@@ -10,6 +10,59 @@ import * as progressService from "./chapter-progress.service";
 import * as stepsService from "./chapter-steps.service";
 import { RespondToStepSchema, AdvanceChapterSchema } from "./chapter.types";
 
+let quizChapterIdColumnPromise: Promise<boolean> | null = null;
+
+async function hasQuizChapterIdColumn() {
+  if (!quizChapterIdColumnPromise) {
+    quizChapterIdColumnPromise = prisma
+      .$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'Quiz'
+            AND column_name = 'chapterId'
+        ) AS "exists"
+      `
+      .then((rows) => rows[0]?.exists === true)
+      .catch(() => false);
+  }
+
+  return quizChapterIdColumnPromise;
+}
+
+function getPublicQuizSelect(includeChapterId: boolean, language?: string) {
+  return {
+    id: true,
+    ...(includeChapterId ? { chapterId: true } : {}),
+    question: true,
+    options: true,
+    explanation: true,
+    heartLimit: true,
+    timeLimitSeconds: true,
+    difficulty: true,
+    tags: true,
+    topicId: true,
+    questionAudioUrl: true,
+    isPoll: true,
+    pollDescription: true,
+    pollResults: true,
+    totalPollVotes: true,
+    translations: language
+      ? {
+          where: { language },
+          take: 1,
+          select: {
+            question: true,
+            options: true,
+            explanation: true,
+            pollDescription: true,
+          },
+        }
+      : false,
+  } as const;
+}
+
 /** Merge localized quiz copy when `translations` was loaded for a single language; strip `translations` from the payload. */
 function applyQuizLanguage<
   T extends {
@@ -180,6 +233,7 @@ contentRouter.get(
     const { slug } = paramsSchema.parse(req.params);
     const language =
       typeof req.query.language === "string" ? req.query.language : undefined;
+    const quizChapterIdEnabled = await hasQuizChapterIdColumn();
 
     const lesson = await prisma.lesson.findUnique({
       where: { slug },
@@ -212,34 +266,7 @@ contentRouter.get(
         quizzes: {
           where: { isActive: true },
           orderBy: { order: "asc" },
-          select: {
-            id: true,
-            question: true,
-            options: true,
-            explanation: true,
-            heartLimit: true,
-            timeLimitSeconds: true,
-            difficulty: true,
-            tags: true,
-            topicId: true,
-            questionAudioUrl: true, // NEW: Audio narration for question
-            isPoll: true, // NEW: Mark as poll question
-            pollDescription: true, // NEW: Context for poll question
-            pollResults: true, // NEW: Vote percentages per option
-            totalPollVotes: true, // NEW: Total votes cast
-            translations: language
-              ? {
-                  where: { language },
-                  take: 1,
-                  select: {
-                    question: true,
-                    options: true,
-                    explanation: true,
-                    pollDescription: true,
-                  },
-                }
-              : false,
-          },
+          select: getPublicQuizSelect(quizChapterIdEnabled, language),
         },
         translations: language
           ? {
@@ -275,9 +302,18 @@ contentRouter.get(
       language && Array.isArray(normalized.quizzes)
         ? {
             ...normalized,
-            quizzes: normalized.quizzes.map((q) => applyQuizLanguage(q)),
+            quizzes: normalized.quizzes.map((q) => ({
+              ...applyQuizLanguage(q),
+              chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+            })),
           }
-        : normalized;
+        : {
+            ...normalized,
+            quizzes: normalized.quizzes.map((q) => ({
+              ...q,
+              chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+            })),
+          };
 
     res.status(200).json({ lesson: withQuizzes });
   }),
@@ -290,6 +326,7 @@ contentRouter.get(
     const { lessonId } = paramsSchema.parse(req.params);
     const language =
       typeof req.query.language === "string" ? req.query.language : undefined;
+    const quizChapterIdEnabled = await hasQuizChapterIdColumn();
 
     if (language) {
       const lesson = await prisma.lesson.findUnique({
@@ -319,32 +356,7 @@ contentRouter.get(
           quizzes: {
             where: { isActive: true },
             orderBy: { order: "asc" },
-            select: {
-              id: true,
-              question: true,
-              options: true,
-              explanation: true,
-              heartLimit: true,
-              timeLimitSeconds: true,
-              difficulty: true,
-              tags: true,
-              topicId: true,
-              questionAudioUrl: true,
-              isPoll: true,
-              pollDescription: true,
-              pollResults: true,
-              totalPollVotes: true,
-              translations: {
-                where: { language },
-                take: 1,
-                select: {
-                  question: true,
-                  options: true,
-                  explanation: true,
-                  pollDescription: true,
-                },
-              },
-            },
+            select: getPublicQuizSelect(quizChapterIdEnabled, language),
           },
           translations: {
             where: { language },
@@ -370,11 +382,17 @@ contentRouter.get(
               title: translation.title,
               description: translation.description,
               hook: translation.hook,
-              quizzes: lesson.quizzes.map((q) => applyQuizLanguage(q)),
+              quizzes: lesson.quizzes.map((q) => ({
+                ...applyQuizLanguage(q),
+                chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+              })),
             }
           : {
               ...lesson,
-              quizzes: lesson.quizzes.map((q) => applyQuizLanguage(q)),
+              quizzes: lesson.quizzes.map((q) => ({
+                ...applyQuizLanguage(q),
+                chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+              })),
             },
       });
       return;
@@ -407,28 +425,21 @@ contentRouter.get(
         quizzes: {
           where: { isActive: true },
           orderBy: { order: "asc" },
-          select: {
-            id: true,
-            question: true,
-            options: true,
-            explanation: true,
-            heartLimit: true,
-            timeLimitSeconds: true,
-            difficulty: true,
-            tags: true,
-            topicId: true,
-            questionAudioUrl: true,
-            isPoll: true,
-            pollDescription: true,
-            pollResults: true,
-            totalPollVotes: true,
-          },
+          select: getPublicQuizSelect(quizChapterIdEnabled),
         },
       },
     });
 
     if (!lesson) return res.status(404).json({ error: "Lesson not found" });
-    res.status(200).json({ lesson });
+    res.status(200).json({
+      lesson: {
+        ...lesson,
+        quizzes: lesson.quizzes.map((q) => ({
+          ...q,
+          chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+        })),
+      },
+    });
   }),
 );
 
@@ -462,44 +473,23 @@ contentRouter.get(
     const { lessonId } = paramsSchema.parse(req.params);
     const language =
       typeof req.query.language === "string" ? req.query.language : undefined;
+    const quizChapterIdEnabled = await hasQuizChapterIdColumn();
 
     const quizzes = await prisma.quiz.findMany({
       where: { lessonId, isActive: true },
       orderBy: { order: "asc" },
-      select: {
-        id: true,
-        question: true,
-        options: true,
-        explanation: true,
-        heartLimit: true,
-        timeLimitSeconds: true,
-        difficulty: true,
-        tags: true,
-        topicId: true,
-        questionAudioUrl: true, // NEW: Audio narration for question
-        isPoll: true, // NEW: Mark as poll question
-        pollDescription: true, // NEW: Context for poll question
-        pollResults: true, // NEW: Vote percentages per option
-        totalPollVotes: true, // NEW: Total votes cast
-        translations: language
-          ? {
-              where: { language },
-              take: 1,
-              select: {
-                question: true,
-                options: true,
-                explanation: true,
-                pollDescription: true,
-              },
-            }
-          : false,
-        // Do NOT return correctOption to the client by default.
-      },
+      select: getPublicQuizSelect(quizChapterIdEnabled, language),
     });
 
     const payload = language
-      ? quizzes.map((q) => applyQuizLanguage(q))
-      : quizzes;
+      ? quizzes.map((q) => ({
+          ...applyQuizLanguage(q),
+          chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+        }))
+      : quizzes.map((q) => ({
+          ...q,
+          chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+        }));
 
     res.status(200).json({ quizzes: payload });
   }),
@@ -749,6 +739,7 @@ contentRouter.get(
   asyncHandler(async (req, res) => {
     const paramsSchema = z.object({ lessonId: z.string().min(1) });
     const { lessonId } = paramsSchema.parse(req.params);
+    const quizChapterIdEnabled = await hasQuizChapterIdColumn();
 
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
@@ -763,8 +754,35 @@ contentRouter.get(
     });
 
     if (!lesson) return res.status(404).json({ error: "Lesson not found" });
+    if (!quizChapterIdEnabled) {
+      return res.status(200).json({
+        lesson: {
+          ...lesson,
+          chapters: lesson.chapters.map((chapter) => ({
+            ...chapter,
+            quizzes: [],
+          })),
+        },
+      });
+    }
 
-    res.status(200).json({ lesson });
+    const quizzes = await prisma.quiz.findMany({
+      where: { lessonId, isActive: true },
+      orderBy: { order: "asc" },
+      select: getPublicQuizSelect(true),
+    });
+
+    res.status(200).json({
+      lesson: {
+        ...lesson,
+        chapters: lesson.chapters.map((chapter) => ({
+          ...chapter,
+          quizzes: quizzes
+            .filter((quiz) => quiz.chapterId === chapter.id)
+            .map((quiz) => ({ ...quiz, chapterId: quiz.chapterId ?? null })),
+        })),
+      },
+    });
   }),
 );
 
@@ -774,6 +792,7 @@ contentRouter.get(
   asyncHandler(async (req, res) => {
     const paramsSchema = z.object({ chapterId: z.string().min(1) });
     const { chapterId } = paramsSchema.parse(req.params);
+    const quizChapterIdEnabled = await hasQuizChapterIdColumn();
 
     const chapter = await prisma.chapter.findUnique({
       where: { id: chapterId },
@@ -783,8 +802,25 @@ contentRouter.get(
     });
 
     if (!chapter) throw new HttpError(404, "Chapter not found");
+    if (!quizChapterIdEnabled) {
+      return res.status(200).json({ chapter: { ...chapter, quizzes: [] } });
+    }
 
-    res.status(200).json({ chapter });
+    const quizzes = await prisma.quiz.findMany({
+      where: { chapterId, isActive: true },
+      orderBy: { order: "asc" },
+      select: getPublicQuizSelect(true),
+    });
+
+    res.status(200).json({
+      chapter: {
+        ...chapter,
+        quizzes: quizzes.map((quiz) => ({
+          ...quiz,
+          chapterId: quiz.chapterId ?? null,
+        })),
+      },
+    });
   }),
 );
 

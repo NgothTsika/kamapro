@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/http";
 import { requireAuth } from "../../middleware/auth.middleware";
@@ -10,9 +10,117 @@ import * as chapterStepsService from "./chapter-steps.service";
 import { validateStepContent, ChapterStepTypeEnum } from "./chapter.types";
 
 const adminRoles = requireRole("ADMIN", "MODERATOR");
+let quizChapterIdColumnPromise: Promise<boolean> | null = null;
+const tableColumnPromiseCache = new Map<string, Promise<boolean>>();
+
+async function hasTableColumn(tableName: string, columnName: string) {
+  const key = `${tableName}.${columnName}`;
+  const cached = tableColumnPromiseCache.get(key);
+  if (cached) return cached;
+
+  const promise = prisma.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = ${tableName}
+          AND column_name = ${columnName}
+      ) AS "exists"
+    `
+    .then((rows) => rows[0]?.exists === true)
+    .catch(() => false);
+
+  tableColumnPromiseCache.set(key, promise);
+  return promise;
+}
+
+async function hasQuizChapterIdColumn() {
+  if (!quizChapterIdColumnPromise) {
+    quizChapterIdColumnPromise = prisma.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'Quiz'
+            AND column_name = 'chapterId'
+        ) AS "exists"
+      `
+      .then((rows) => rows[0]?.exists === true)
+      .catch(() => false);
+  }
+
+  return quizChapterIdColumnPromise;
+}
+
+function getAdminQuizSelect(includeChapterId: boolean): Prisma.QuizSelect {
+  return {
+    id: true,
+    ...(includeChapterId ? { chapterId: true } : {}),
+    lessonId: true,
+    question: true,
+    type: true,
+    options: true,
+    optionImages: true,
+    correctOption: true,
+    explanation: true,
+    order: true,
+    heartLimit: true,
+    timeLimitSeconds: true,
+    difficulty: true,
+    isActive: true,
+    tags: true,
+    topicId: true,
+    questionAudioUrl: true,
+    isPoll: true,
+    pollDescription: true,
+    pollResults: true,
+    totalPollVotes: true,
+    createdAt: true,
+    updatedAt: true,
+    translations: {
+      orderBy: [{ language: "asc" }, { createdAt: "desc" }],
+    },
+  };
+}
 
 function jsonChanges(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+const adminQuizTypeSchema = z.enum([
+  "true_false",
+  "multiple_choice",
+  "image_choice",
+  "poll",
+]);
+
+type AdminQuizType = z.infer<typeof adminQuizTypeSchema>;
+
+function inferAdminQuizType(input: {
+  type?: AdminQuizType;
+  isPoll?: boolean;
+  options?: string[];
+  optionImages?: string[] | null;
+}): AdminQuizType {
+  if (input.isPoll || input.type === "poll") return "poll";
+  if (input.type) return input.type;
+  if (
+    Array.isArray(input.optionImages) &&
+    input.optionImages.some((image) => image.trim().length > 0)
+  ) {
+    return "image_choice";
+  }
+
+  const [first, second] = input.options ?? [];
+  if (
+    input.options?.length === 2 &&
+    first?.trim().toLowerCase() === "true" &&
+    second?.trim().toLowerCase() === "false"
+  ) {
+    return "true_false";
+  }
+
+  return "multiple_choice";
 }
 
 function slugify(input: string): string {
@@ -415,27 +523,126 @@ contentAdminRouter.get(
   asyncHandler(async (req, res) => {
     const paramsSchema = z.object({ lessonId: z.string().min(1) });
     const { lessonId } = paramsSchema.parse(req.params);
+    const quizChapterIdEnabled = await hasQuizChapterIdColumn();
+    const [
+      hasLessonDeepDiveContent,
+      hasLessonTitleAudioUrl,
+      hasLessonHookAudioUrl,
+      hasLessonContentAudioUrl,
+      hasLessonDeepDiveAudioUrl,
+      hasChapterIntroText,
+      hasChapterIntroAudioUrl,
+    ] = await Promise.all([
+      hasTableColumn("Lesson", "deepDiveContent"),
+      hasTableColumn("Lesson", "titleAudioUrl"),
+      hasTableColumn("Lesson", "hookAudioUrl"),
+      hasTableColumn("Lesson", "contentAudioUrl"),
+      hasTableColumn("Lesson", "deepDiveAudioUrl"),
+      hasTableColumn("Chapter", "introText"),
+      hasTableColumn("Chapter", "introAudioUrl"),
+    ]);
+
+    const lessonSelect = {
+      id: true,
+      slug: true,
+      title: true,
+      subtitle: true,
+      description: true,
+      hook: true,
+      coverImage: true,
+      xpReward: true,
+      isPremium: true,
+      published: true,
+      order: true,
+      categoryId: true,
+      topicId: true,
+      ...(hasLessonDeepDiveContent ? { deepDiveContent: true } : {}),
+      ...(hasLessonTitleAudioUrl ? { titleAudioUrl: true } : {}),
+      ...(hasLessonHookAudioUrl ? { hookAudioUrl: true } : {}),
+      ...(hasLessonContentAudioUrl ? { contentAudioUrl: true } : {}),
+      ...(hasLessonDeepDiveAudioUrl ? { deepDiveAudioUrl: true } : {}),
+      category: { select: { id: true, name: true, slug: true } },
+      topic: { select: { id: true, name: true, slug: true } },
+      chapters: {
+        orderBy: { order: "asc" as const },
+        select: {
+          id: true,
+          lessonId: true,
+          title: true,
+          coverImage: true,
+          mediaType: true,
+          mediaUrl: true,
+          feedbackQuestion: true,
+          order: true,
+          createdAt: true,
+          updatedAt: true,
+          ...(hasChapterIntroText ? { introText: true } : {}),
+          ...(hasChapterIntroAudioUrl ? { introAudioUrl: true } : {}),
+        },
+      },
+      translations: {
+        orderBy: [{ language: "asc" as const }, { createdAt: "desc" as const }],
+      },
+    } satisfies Prisma.LessonSelect;
 
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
-      include: {
-        category: { select: { id: true, name: true, slug: true } },
-        topic: { select: { id: true, name: true, slug: true } },
-        chapters: { orderBy: { order: "asc" } },
-        quizzes: {
-          orderBy: { order: "asc" },
-          include: {
-            translations: {
-              orderBy: [{ language: "asc" }, { createdAt: "desc" }],
-            },
-          },
-        },
-        translations: { orderBy: [{ language: "asc" }, { createdAt: "desc" }] },
-      },
+      select: lessonSelect,
     });
 
     if (!lesson) throw new HttpError(404, "Lesson not found");
-    res.status(200).json({ lesson });
+    const quizzes = await prisma.quiz.findMany({
+      where: { lessonId },
+      orderBy: { order: "asc" },
+      select: getAdminQuizSelect(quizChapterIdEnabled),
+    });
+    res.status(200).json({
+      lesson: {
+        ...lesson,
+        deepDiveContent: hasLessonDeepDiveContent
+          ? "deepDiveContent" in lesson
+            ? (lesson.deepDiveContent ?? null)
+            : null
+          : null,
+        titleAudioUrl: hasLessonTitleAudioUrl
+          ? "titleAudioUrl" in lesson
+            ? (lesson.titleAudioUrl ?? null)
+            : null
+          : null,
+        hookAudioUrl: hasLessonHookAudioUrl
+          ? "hookAudioUrl" in lesson
+            ? (lesson.hookAudioUrl ?? null)
+            : null
+          : null,
+        contentAudioUrl: hasLessonContentAudioUrl
+          ? "contentAudioUrl" in lesson
+            ? (lesson.contentAudioUrl ?? null)
+            : null
+          : null,
+        deepDiveAudioUrl: hasLessonDeepDiveAudioUrl
+          ? "deepDiveAudioUrl" in lesson
+            ? (lesson.deepDiveAudioUrl ?? null)
+            : null
+          : null,
+        relatedCharacters: [],
+        chapters: lesson.chapters.map((chapter) => ({
+          ...chapter,
+          content: "",
+          introText:
+            hasChapterIntroText && "introText" in chapter
+              ? (chapter.introText ?? null)
+              : null,
+          introAudioUrl:
+            hasChapterIntroAudioUrl && "introAudioUrl" in chapter
+              ? (chapter.introAudioUrl ?? null)
+              : null,
+        })),
+        quizzes: quizzes.map((quiz) => ({
+          ...quiz,
+          chapterId: quizChapterIdEnabled ? (quiz.chapterId ?? null) : null,
+        })),
+      },
+    });
   }),
 );
 
@@ -998,7 +1205,10 @@ contentAdminRouter.post(
     const { lessonId } = paramsSchema.parse(req.params);
     const bodySchema = z.object({
       question: z.string().min(1),
+      chapterId: z.string().min(1).optional().nullable(),
+      type: adminQuizTypeSchema.optional(),
       options: z.array(z.string()).min(2),
+      optionImages: z.array(z.string()).optional().nullable(),
       correctOption: z.number().int().min(0).optional().nullable(),
       explanation: z.string().optional().nullable(),
       order: z.number().int().optional(),
@@ -1013,10 +1223,23 @@ contentAdminRouter.post(
       pollDescription: z.string().optional().nullable(), // NEW
     });
     const body = bodySchema.parse(req.body);
+    const quizChapterIdEnabled = await hasQuizChapterIdColumn();
+    const requestedChapterId = quizChapterIdEnabled
+      ? (body.chapterId ?? null)
+      : null;
+    const isPoll = body.isPoll ?? body.type === "poll";
+    const quizType = inferAdminQuizType({
+      type: body.type,
+      isPoll,
+      options: body.options,
+      optionImages: body.optionImages ?? null,
+    });
+    const optionImages =
+      body.optionImages?.map((image) => image.trim()).filter(Boolean) ?? null;
 
     // Validate poll questions should not have correctOption
     if (
-      body.isPoll &&
+      isPoll &&
       body.correctOption !== null &&
       body.correctOption !== undefined
     ) {
@@ -1028,7 +1251,7 @@ contentAdminRouter.post(
 
     // Validate regular quizzes must have correctOption
     if (
-      !body.isPoll &&
+      !isPoll &&
       (body.correctOption === null || body.correctOption === undefined)
     ) {
       throw new HttpError(
@@ -1048,22 +1271,38 @@ contentAdminRouter.post(
     const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
     if (!lesson) throw new HttpError(404, "Lesson not found");
 
+    if (requestedChapterId) {
+      const chapter = await prisma.chapter.findFirst({
+        where: { id: requestedChapterId, lessonId },
+        select: { id: true },
+      });
+      if (!chapter) {
+        throw new HttpError(
+          400,
+          "Selected chapter does not belong to this lesson",
+        );
+      }
+    }
+
     const quiz = await prisma.quiz.create({
       data: {
         lessonId,
+        ...(quizChapterIdEnabled ? { chapterId: requestedChapterId } : {}),
         question: body.question.trim(),
+        type: quizType,
         options: body.options,
-        correctOption: body.isPoll ? null : body.correctOption,
-        explanation: body.isPoll ? null : (body.explanation ?? undefined),
+        optionImages: optionImages === null ? Prisma.JsonNull : optionImages,
+        correctOption: isPoll ? null : body.correctOption,
+        explanation: isPoll ? null : (body.explanation ?? undefined),
         order: body.order ?? 0,
-        heartLimit: body.isPoll ? undefined : (body.heartLimit ?? 4),
+        heartLimit: isPoll ? undefined : (body.heartLimit ?? 4),
         timeLimitSeconds: body.timeLimitSeconds ?? undefined,
-        difficulty: body.isPoll ? null : (body.difficulty ?? undefined),
+        difficulty: isPoll ? null : (body.difficulty ?? undefined),
         isActive: body.isActive ?? true,
         tags: body.tags ?? [],
         topicId: body.topicId ?? undefined,
         questionAudioUrl: body.questionAudioUrl ?? undefined, // NEW
-        isPoll: body.isPoll ?? false, // NEW
+        isPoll, // NEW
         pollDescription: body.pollDescription ?? undefined, // NEW
       },
     });
@@ -1074,7 +1313,13 @@ contentAdminRouter.post(
         action: "create_quiz",
         entityType: "quiz",
         entityId: quiz.id,
-        changes: { lessonId, question: quiz.question, isPoll: body.isPoll },
+        changes: jsonChanges({
+          lessonId,
+          chapterId: requestedChapterId,
+          question: quiz.question,
+          type: quiz.type,
+          isPoll,
+        }),
       },
     });
 
@@ -1098,10 +1343,12 @@ contentAdminRouter.get(
       select: { id: true },
     });
     if (!lesson) throw new HttpError(404, "Lesson not found");
+    const quizChapterIdEnabled = await hasQuizChapterIdColumn();
 
     const quizzes = await prisma.quiz.findMany({
       where: { lessonId },
       orderBy: { order: "asc" },
+      select: getAdminQuizSelect(quizChapterIdEnabled),
     });
 
     // Helper to safely parse JSON fields
@@ -1137,6 +1384,7 @@ contentAdminRouter.get(
     const transformedQuizzes = quizzes.map((quiz) => ({
       id: quiz.id,
       lessonId: quiz.lessonId,
+      chapterId: quizChapterIdEnabled ? (quiz.chapterId ?? null) : null,
       question: quiz.question,
       type: quiz.type,
       options: safeJsonArray(quiz.options),
@@ -1159,6 +1407,7 @@ contentAdminRouter.get(
       totalPollVotes: quiz.totalPollVotes,
       createdAt: quiz.createdAt.toISOString(),
       updatedAt: quiz.updatedAt.toISOString(),
+      translations: quiz.translations,
     }));
 
     res.status(200).json({ quizzes: transformedQuizzes });
@@ -1174,7 +1423,10 @@ contentAdminRouter.patch(
     const { quizId } = paramsSchema.parse(req.params);
     const bodySchema = z.object({
       question: z.string().min(1).optional(),
+      chapterId: z.string().min(1).optional().nullable(),
+      type: adminQuizTypeSchema.optional(),
       options: z.array(z.string()).min(2).optional(),
+      optionImages: z.array(z.string()).optional().nullable(),
       correctOption: z.number().int().min(0).optional().nullable(),
       explanation: z.string().optional().nullable(),
       order: z.number().int().optional(),
@@ -1189,13 +1441,53 @@ contentAdminRouter.patch(
       pollDescription: z.string().optional().nullable(), // NEW
     });
     const body = bodySchema.parse(req.body);
+    const quizChapterIdEnabled = await hasQuizChapterIdColumn();
+    const requestedChapterId =
+      quizChapterIdEnabled && body.chapterId !== undefined
+        ? body.chapterId
+        : undefined;
 
     const existing = await prisma.quiz.findUnique({ where: { id: quizId } });
     if (!existing) throw new HttpError(404, "Quiz not found");
 
+    if (requestedChapterId) {
+      const chapter = await prisma.chapter.findFirst({
+        where: { id: requestedChapterId, lessonId: existing.lessonId },
+        select: { id: true },
+      });
+      if (!chapter) {
+        throw new HttpError(
+          400,
+          "Selected chapter does not belong to this lesson",
+        );
+      }
+    }
+
     const options = body.options ?? (existing.options as unknown as string[]);
-    const correctOption = body.correctOption ?? existing.correctOption;
-    const isPoll = body.isPoll ?? existing.isPoll;
+    const isPoll =
+      body.isPoll ?? (body.type === "poll" ? true : existing.isPoll);
+    const isSwitchingToPoll =
+      isPoll && (body.isPoll !== undefined || body.type === "poll");
+    const correctOption =
+      body.correctOption !== undefined
+        ? body.correctOption
+        : isSwitchingToPoll
+          ? null
+          : existing.correctOption;
+    const quizType = inferAdminQuizType({
+      type: body.type,
+      isPoll,
+      options,
+      optionImages:
+        body.optionImages === undefined
+          ? ((existing.optionImages as unknown as string[] | null) ?? null)
+          : body.optionImages,
+    });
+    const optionImages =
+      body.optionImages === undefined
+        ? undefined
+        : (body.optionImages?.map((image) => image.trim()).filter(Boolean) ??
+          null);
 
     // Validate poll questions should not have correctOption
     if (isPoll && correctOption !== null && correctOption !== undefined) {
@@ -1225,7 +1517,20 @@ contentAdminRouter.patch(
       where: { id: quizId },
       data: {
         question: body.question?.trim() ?? undefined,
+        ...(quizChapterIdEnabled && requestedChapterId !== undefined
+          ? { chapterId: requestedChapterId }
+          : {}),
+        type:
+          body.type === undefined && body.isPoll === undefined
+            ? undefined
+            : quizType,
         options: body.options ?? undefined,
+        optionImages:
+          optionImages === undefined
+            ? undefined
+            : optionImages === null
+              ? Prisma.JsonNull
+              : optionImages,
         correctOption: isPoll ? null : (body.correctOption ?? undefined),
         explanation: isPoll
           ? null

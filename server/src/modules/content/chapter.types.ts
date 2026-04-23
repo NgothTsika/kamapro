@@ -151,10 +151,16 @@ export function validateStepContent(
   const validators: Record<ChapterStepType, (c: any) => boolean> = {
     TEXT: (c) => c.body && typeof c.body === "string",
     TEXT_AUDIO: (c) =>
-      c.body && typeof c.body === "string" && c.title !== undefined,
+      c.body &&
+      typeof c.body === "string" &&
+      c.audioUrl &&
+      typeof c.audioUrl === "string",
     IMAGE_FULL: (c) =>
-      c.caption !== undefined &&
-      (typeof c.caption === "string" || c.caption === null),
+      c.imageUrl &&
+      typeof c.imageUrl === "string" &&
+      (c.caption === undefined ||
+        typeof c.caption === "string" ||
+        c.caption === null),
     POLL: (c) =>
       c.question &&
       typeof c.question === "string" &&

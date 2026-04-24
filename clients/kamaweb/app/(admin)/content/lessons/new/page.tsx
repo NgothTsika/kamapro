@@ -84,13 +84,17 @@ export default function NewLessonPage() {
     if (!token) return;
     setSaving(true);
     try {
+      const trimmedTitle = form.title.trim();
+      const trimmedSubtitle = form.subtitle.trim();
+      const trimmedSlug = form.slug.trim();
+      const trimmedCoverImage = form.coverImage.trim();
       const lesson = await createAdminLesson(token, {
-        title: form.title.trim(),
-        subtitle: form.subtitle.trim() || "",
-        slug: form.slug.trim() || undefined,
+        title: trimmedTitle,
+        subtitle: trimmedSubtitle || undefined,
+        slug: trimmedSlug || undefined,
         description: form.description.trim() || null,
         hook: form.hook.trim() || null,
-        coverImage: form.coverImage.trim() || "",
+        coverImage: trimmedCoverImage || null,
         xpReward: Number(form.xpReward) || 10,
         order: Number(form.order) || 0,
         published: form.published,

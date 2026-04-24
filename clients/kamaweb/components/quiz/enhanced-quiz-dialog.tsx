@@ -30,6 +30,7 @@ export type QuizType =
 
 export interface QuizFormData {
   question: string;
+  chapterId?: string | null;
   type: QuizType;
   options: string[];
   optionImages?: string[];
@@ -51,6 +52,7 @@ interface EnhancedQuizDialogProps {
   initialData?: Partial<QuizFormData>;
   title?: string;
   lessonId: string;
+  chapters?: Array<{ id: string; title: string; order: number }>;
 }
 
 export function EnhancedQuizDialog({
@@ -60,63 +62,70 @@ export function EnhancedQuizDialog({
   initialData,
   title = "New quiz question",
   lessonId,
+  chapters = [],
 }: EnhancedQuizDialogProps) {
   const [saving, setSaving] = useState(false);
   const [quizType, setQuizType] = useState<QuizType>(
     (initialData?.type as QuizType) || "multiple_choice",
   );
-
-  // Debug logging
-  console.log("🎯 EnhancedQuizDialog - initialData:", initialData);
-
   const [form, setForm] = useState<QuizFormData>({
-    question: initialData?.question || "",
-    type: quizType,
-    options: initialData?.options || ["", ""],
-    optionImages: initialData?.optionImages || [],
-    correctOption: initialData?.correctOption ?? 0,
-    explanation: initialData?.explanation || "",
-    order: initialData?.order || 0,
-    heartLimit: initialData?.heartLimit || 4,
-    difficulty: initialData?.difficulty || "medium",
-    timeLimitSeconds: initialData?.timeLimitSeconds,
-    questionAudioUrl: initialData?.questionAudioUrl || null, // NEW
-    isPoll: initialData?.isPoll || false, // NEW
-    pollDescription: initialData?.pollDescription || null, // NEW
+    question: "",
+    chapterId: null,
+    type: "multiple_choice",
+    options: ["", ""],
+    optionImages: [],
+    correctOption: 0,
+    explanation: "",
+    order: 0,
+    heartLimit: 4,
+    difficulty: "medium",
+    timeLimitSeconds: undefined,
+    questionAudioUrl: null,
+    isPoll: false,
+    pollDescription: null,
   });
 
   // Update form when initialData changes
   useEffect(() => {
-    if (initialData) {
-      console.log("🔄 Updating form with initialData:", initialData);
-      const newType = (initialData.type as QuizType) || "multiple_choice";
-      setQuizType(newType);
-      setForm({
-        question: initialData.question || "",
-        type: newType,
-        options: initialData.options || ["", ""],
-        optionImages: initialData.optionImages || [],
-        correctOption: initialData.correctOption ?? 0,
-        explanation: initialData.explanation || "",
-        order: initialData.order || 0,
-        heartLimit: initialData.heartLimit || 4,
-        difficulty: initialData.difficulty || "medium",
-        timeLimitSeconds: initialData.timeLimitSeconds,
-        questionAudioUrl: initialData.questionAudioUrl || null,
-        isPoll: initialData.isPoll || false,
-        pollDescription: initialData.pollDescription || null,
-      });
-    }
-  }, [initialData]);
+    if (!open) return;
+
+    const newType = (initialData?.type as QuizType) || "multiple_choice";
+    const isPoll = initialData?.isPoll || newType === "poll";
+
+    setQuizType(newType);
+    setForm({
+      question: initialData?.question || "",
+      chapterId: initialData?.chapterId || null,
+      type: newType,
+      options:
+        newType === "true_false"
+          ? ["True", "False"]
+          : (initialData?.options ?? ["", ""]),
+      optionImages:
+        newType === "image_choice" ? (initialData?.optionImages ?? []) : [],
+      correctOption: isPoll ? null : (initialData?.correctOption ?? 0),
+      explanation: initialData?.explanation || "",
+      order: initialData?.order || 0,
+      heartLimit: initialData?.heartLimit || 4,
+      difficulty: initialData?.difficulty || "medium",
+      timeLimitSeconds: initialData?.timeLimitSeconds,
+      questionAudioUrl: initialData?.questionAudioUrl || null,
+      isPoll,
+      pollDescription: initialData?.pollDescription || null,
+    });
+  }, [initialData, open]);
 
   const handleTypeChange = (newType: QuizType) => {
+    const nextIsPoll = newType === "poll";
     setQuizType(newType);
     setForm((f) => ({
       ...f,
       type: newType,
+      isPoll: nextIsPoll,
       options:
         newType === "true_false" ? ["True", "False"] : f.options || ["", ""],
       optionImages: newType === "image_choice" ? f.optionImages || [] : [],
+      correctOption: nextIsPoll ? null : (f.correctOption ?? 0),
     }));
   };
 
@@ -157,6 +166,8 @@ export function EnhancedQuizDialog({
   };
 
   const handleSave = async () => {
+    const isPoll = form.isPoll || quizType === "poll";
+
     if (!form.question.trim()) {
       alert("Question is required");
       return;
@@ -180,7 +191,7 @@ export function EnhancedQuizDialog({
       return;
     }
 
-    if (!form.isPoll && form.correctOption === null) {
+    if (!isPoll && form.correctOption === null) {
       alert("Quizzes require a correct answer");
       return;
     }
@@ -190,6 +201,7 @@ export function EnhancedQuizDialog({
       await onSave({
         ...form,
         type: quizType,
+        isPoll,
       });
       onOpenChange(false);
     } catch (error) {
@@ -219,6 +231,7 @@ export function EnhancedQuizDialog({
                   ...f,
                   isPoll: v,
                   correctOption: v ? null : 0,
+                  type: v ? "poll" : (f.type === "poll" ? "multiple_choice" : f.type),
                 }))
               }
             />
@@ -226,6 +239,29 @@ export function EnhancedQuizDialog({
               This is a poll (not a scored quiz)
             </Label>
           </div>
+          {chapters.length > 0 ? (
+            <div className="grid gap-2 mt-4">
+              <Label htmlFor="quizChapter">Attach to chapter</Label>
+              <NativeSelect
+                value={form.chapterId ?? ""}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    chapterId: e.target.value || null,
+                  }))
+                }
+              >
+                <NativeSelectOption value="">
+                  Lesson-level quiz
+                </NativeSelectOption>
+                {chapters.map((chapter) => (
+                  <NativeSelectOption key={chapter.id} value={chapter.id}>
+                    {chapter.order}. {chapter.title}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+          ) : null}
         </DialogHeader>
 
         <Tabs

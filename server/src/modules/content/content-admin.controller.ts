@@ -1224,6 +1224,13 @@ contentAdminRouter.post(
     });
     const body = bodySchema.parse(req.body);
     const quizChapterIdEnabled = await hasQuizChapterIdColumn();
+    if (body.chapterId && !quizChapterIdEnabled) {
+      throw new HttpError(
+        500,
+        "Database is missing chapter quiz support. Run the latest Prisma migration for Quiz.chapterId.",
+      );
+    }
+
     const requestedChapterId = quizChapterIdEnabled
       ? (body.chapterId ?? null)
       : null;
@@ -1442,6 +1449,13 @@ contentAdminRouter.patch(
     });
     const body = bodySchema.parse(req.body);
     const quizChapterIdEnabled = await hasQuizChapterIdColumn();
+    if (body.chapterId && !quizChapterIdEnabled) {
+      throw new HttpError(
+        500,
+        "Database is missing chapter quiz support. Run the latest Prisma migration for Quiz.chapterId.",
+      );
+    }
+
     const requestedChapterId =
       quizChapterIdEnabled && body.chapterId !== undefined
         ? body.chapterId

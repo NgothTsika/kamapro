@@ -151,6 +151,7 @@ export type QuizTranslationAdmin = {
 export type QuizAdmin = {
   id: string;
   lessonId: string;
+  chapterId?: string | null;
   question: string;
   options: string[];
   correctOption: number | null; // UPDATED: Now nullable for polls
@@ -322,6 +323,7 @@ export type AdminCharacterDetail = AdminCharacter & {
 
 export type Quiz = {
   id: string;
+  chapterId?: string | null;
   question: string;
   options: string[];
   explanation: string | null;

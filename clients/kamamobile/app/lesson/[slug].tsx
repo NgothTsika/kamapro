@@ -1,522 +1,492 @@
-import {
-  AnimatedLessonProgressBar,
-  ChapterCarousel,
-  FeedbackStars,
-  LessonCelebration,
-  QuizOptionCard,
-  QuizResultModal,
-  type QuizResultVariant,
-} from "@/components/lesson";
-import {
-  answerQuiz,
-  completeLesson,
-  getLessonBySlug,
-  getStreak,
-  startQuizSession,
-  submitLessonFeedback,
-  submitPollVote,
-  type LessonFull,
-  type LessonQuizQuestion,
-} from "@/lib";
-import {
-  defaultTrueFalseOptions,
-  normalizeOptionImages,
-  normalizeQuizType,
-  normalizeStringList,
-} from "@/lib/quiz/normalize";
-import { useAuth } from "@/lib/auth/auth-context";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { getLessonBySlug, type LessonFull } from "@/lib";
+import { kama } from "@/lib/kama-api";
+import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
 
-type Stage = "intro" | "read" | "quiz" | "celebration" | "feedback" | "done";
+const palette = {
+  plum: "#3d0d35",
+  paper: "#f6eddc",
+  paperSoft: "#fbf4e7",
+  ink: "#21314f",
+  inkSoft: "#65718c",
+  line: "#eadbc4",
+  navy: "#263b5e",
+  mint: "#58b874",
+};
 
-function useNormalizedQuiz(quiz: LessonQuizQuestion | undefined) {
-  return useMemo(() => {
-    if (!quiz) return null;
-    const type = normalizeQuizType(quiz.type);
-    let labels = normalizeStringList(quiz.options);
-    if (type === "true_false") labels = defaultTrueFalseOptions(labels);
-    const isPoll = Boolean(quiz.isPoll) || type === "poll";
-    const images =
-      type === "image_choice"
-        ? normalizeOptionImages(quiz.optionImages, labels.length)
-        : labels.map(() => null as string | null);
-    return {
-      type,
-      labels,
-      images,
-      isPoll,
-      pollDescription: quiz.pollDescription,
-    };
-  }, [quiz]);
+function getExcerpt(text?: string | null) {
+  if (!text) return "A new scene in the story is ready to unfold.";
+  return text.length > 140 ? `${text.slice(0, 140).trim()}...` : text;
 }
 
-export default function LessonFlowScreen() {
+export default function LessonStoryScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const { token } = useAuth();
   const [lesson, setLesson] = useState<LessonFull | null>(null);
-  const [stage, setStage] = useState<Stage>("intro");
-  const [chapterIndex, setChapterIndex] = useState(0);
-  const [quizIndex, setQuizIndex] = useState(0);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionNonce, setSessionNonce] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState("");
-  const [status, setStatus] = useState("");
-
-  const [celebration, setCelebration] = useState({ xp: 0, streak: 0 });
-
-  const [resultModal, setResultModal] = useState<{
-    visible: boolean;
-    variant: QuizResultVariant;
-    title: string;
-    message: string;
-    explanation?: string | null;
-    heartsRemaining?: number;
-  }>({
-    visible: false,
-    variant: "correct",
-    title: "",
-    message: "",
-  });
+  const [currentChapterId, setCurrentChapterId] = useState<string | null>(null);
+  const [completedChapterIds, setCompletedChapterIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!slug || typeof slug !== "string") {
       setLesson(null);
       return;
     }
+
     getLessonBySlug(slug)
-      .then((result) => setLesson(result))
+      .then(async (result) => {
+        setLesson(result);
+
+        try {
+          const progressData = await kama.getLessonProgress(result.id);
+          const chapters = progressData.progress.lesson.chapters;
+          const nextChapter =
+            progressData.progress.currentChapter || chapters[0] || null;
+          setCurrentChapterId(nextChapter?.id ?? null);
+          setCompletedChapterIds(
+            chapters
+              .filter((chapter) => chapter.chapterProgress?.[0]?.completed)
+              .map((chapter) => chapter.id),
+          );
+        } catch {
+          const firstChapter = [...result.chapters].sort(
+            (a, b) => a.order - b.order,
+          )[0];
+          setCurrentChapterId(firstChapter?.id ?? null);
+          setCompletedChapterIds([]);
+        }
+      })
       .catch(() => setLesson(null));
   }, [slug]);
 
-  const readCardCount = useMemo(() => {
-    if (!lesson) return 1;
-    return lesson.chapters.length > 0 ? lesson.chapters.length : 1;
-  }, [lesson]);
-
-  const readProgress = (chapterIndex + 1) / readCardCount;
-
-  const currentQuiz = lesson?.quizzes[quizIndex];
-  const normalized = useNormalizedQuiz(currentQuiz);
-
-  useEffect(() => {
-    if (!token || !lesson || stage !== "quiz") return;
-    const q = lesson.quizzes[quizIndex];
-    if (!q) return;
-    const t = normalizeQuizType(q.type);
-    const isPoll = Boolean(q.isPoll) || t === "poll";
-    if (isPoll) {
-      setSessionId(null);
-      return;
-    }
-
-    startQuizSession(token, q.id)
-      .then((res) => setSessionId(res.sessionId))
-      .catch(() => setSessionId(null));
-  }, [token, lesson, stage, quizIndex, sessionNonce]);
+  const sortedChapters = useMemo(
+    () => [...(lesson?.chapters ?? [])].sort((a, b) => a.order - b.order),
+    [lesson?.chapters],
+  );
 
   if (!lesson) {
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "#0e0a06",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text style={{ color: "white" }}>Loading lesson...</Text>
-      </View>
+      <SafeAreaView style={styles.loadingScreen}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <ActivityIndicator size="large" color={palette.mint} />
+      </SafeAreaView>
     );
   }
 
-  async function finishAllQuizzes() {
-    if (!token || !lesson) return;
-    try {
-      const res = await completeLesson(token, lesson.id);
-      const streakRes = await getStreak(token);
-      setCelebration({
-        xp: res.xpEarned ?? lesson.xpReward ?? 0,
-        streak: streakRes.currentStreak ?? 0,
-      });
-      setStage("celebration");
-    } catch {
-      setCelebration({ xp: lesson.xpReward ?? 0, streak: 0 });
-      setStage("celebration");
-    }
-  }
+  const startLesson = () => {
+    const activeChapter =
+      sortedChapters.find((chapter) => chapter.id === currentChapterId) ||
+      sortedChapters[0];
+    if (!activeChapter) return;
 
-  function advanceQuizAfterCorrect() {
-    if (!lesson) return;
-    const next = quizIndex + 1;
-    if (next >= lesson.quizzes.length) {
-      void finishAllQuizzes();
-    } else {
-      setQuizIndex(next);
-      setSelectedOption(null);
-      setSessionId(null);
-      setSessionNonce((n) => n + 1);
-    }
-  }
-
-  async function submitQuizAnswer() {
-    if (!token || selectedOption === null || !currentQuiz || !normalized)
-      return;
-
-    if (normalized.isPoll) {
-      try {
-        await submitPollVote(token, currentQuiz.id, selectedOption);
-        setResultModal({
-          visible: true,
-          variant: "poll",
-          title: "Poll",
-          message: "Your answer was recorded.",
-          explanation: currentQuiz.explanation,
-        });
-      } catch {
-        setResultModal({
-          visible: true,
-          variant: "failed",
-          title: "Poll",
-          message: "Could not submit your vote.",
-          explanation: null,
-        });
-      }
-      return;
-    }
-
-    if (sessionId === null) return;
-
-    try {
-      const result = await answerQuiz(token, sessionId, selectedOption);
-
-      if (result.passed === true) {
-        setResultModal({
-          visible: true,
-          variant: "correct",
-          title: "Correct!",
-          message: "The spirits approve.",
-          explanation: currentQuiz.explanation,
-        });
-        return;
-      }
-
-      if (result.passed === false) {
-        setResultModal({
-          visible: true,
-          variant: "failed",
-          title: "Out of hearts",
-          message: "You have used all chances for this question.",
-          explanation: currentQuiz.explanation,
-          heartsRemaining: result.heartsRemaining,
-        });
-        return;
-      }
-
-      setResultModal({
-        visible: true,
-        variant: "incorrect",
-        title: "Not quite",
-        message: "Try another choice.",
-        explanation: null,
-        heartsRemaining: result.heartsRemaining,
-      });
-    } catch {
-      setResultModal({
-        visible: true,
-        variant: "failed",
-        title: "Error",
-        message: "Could not submit answer.",
-        explanation: null,
-      });
-    }
-  }
-
-  function onResultModalContinue() {
-    if (!lesson) return;
-    const { variant } = resultModal;
-    setResultModal((m) => ({ ...m, visible: false }));
-
-    if (variant === "correct") {
-      advanceQuizAfterCorrect();
-      return;
-    }
-
-    if (variant === "poll") {
-      const next = quizIndex + 1;
-      setSelectedOption(null);
-      if (next >= lesson.quizzes.length) {
-        void finishAllQuizzes();
-      } else {
-        setQuizIndex(next);
-        setSessionNonce((n) => n + 1);
-      }
-      return;
-    }
-
-    if (variant === "incorrect" || variant === "failed") {
-      setSelectedOption(null);
-      setSessionId(null);
-      setSessionNonce((n) => n + 1);
-    }
-  }
-
-  async function submitFeedback() {
-    if (!token || !lesson) return;
-    try {
-      await submitLessonFeedback({
-        token,
+    router.push({
+      pathname: "/chapter/[id]",
+      params: {
+        id: activeChapter.id,
         lessonId: lesson.id,
-        rating,
-        comment: comment.trim() || undefined,
-      });
-      setStage("done");
-    } catch {
-      setStatus("Feedback failed to send. Please retry.");
-    }
-  }
-
-  function goNextRead() {
-    if (!lesson) return;
-    if (chapterIndex < readCardCount - 1) {
-      setChapterIndex((v) => v + 1);
-      return;
-    }
-    if (lesson.quizzes.length === 0) {
-      void finishAllQuizzes();
-    } else {
-      setStage("quiz");
-    }
-  }
+        lessonSlug: lesson.slug,
+        lessonTitle: lesson.title,
+      },
+    });
+  };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0e0a06" }}>
-      <Stack.Screen
-        options={{
-          title: lesson.title,
-          headerTintColor: "white",
-          headerStyle: { backgroundColor: "#0e0a06" },
-        }}
-      />
+    <SafeAreaView style={styles.screen}>
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <QuizResultModal
-        visible={resultModal.visible}
-        variant={resultModal.variant}
-        title={resultModal.title}
-        message={resultModal.message}
-        explanation={resultModal.explanation}
-        heartsRemaining={resultModal.heartsRemaining}
-        onContinue={onResultModalContinue}
-      />
-
-      {stage === "celebration" ? (
-        <LessonCelebration
-          xpEarned={celebration.xp}
-          streak={celebration.streak}
-          lessonTitle={lesson.title}
-          onContinue={() => setStage("feedback")}
-        />
-      ) : (
-        <ScrollView
-          contentContainerStyle={{
-            padding: 16,
-            paddingTop: 20,
-            paddingBottom: 40,
-          }}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+      >
+        <ImageBackground
+          source={lesson.coverImage ? { uri: lesson.coverImage } : undefined}
+          style={styles.hero}
+          imageStyle={styles.heroImage}
         >
-          {stage === "intro" ? (
-            <View style={{ gap: 12 }}>
-              <Text style={{ color: "#f8d568", fontWeight: "700" }}>
-                Lesson Intro
-              </Text>
-              <Text style={{ color: "white", fontSize: 28, fontWeight: "700" }}>
-                {lesson.title}
-              </Text>
-              <Text style={{ color: "#d0c2b0" }}>
-                {lesson.hook ||
-                  lesson.description ||
-                  "Prepare for this wisdom quest."}
-              </Text>
-              <AnimatedLessonProgressBar value={0.15} />
-              <Pressable
-                onPress={() => setStage("read")}
-                style={{
-                  backgroundColor: "#f8d568",
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  alignItems: "center",
-                }}
-              >
-                <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>
-                  Start Lesson
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
+          <View style={styles.heroShade} />
 
-          {stage === "read" ? (
-            <View style={{ gap: 12 }}>
-              <Text style={{ color: "white", fontSize: 22, fontWeight: "700" }}>
-                Reading
-              </Text>
-              <AnimatedLessonProgressBar value={readProgress} />
-              <Text style={{ color: "#d0c2b0" }}>
-                Card {chapterIndex + 1} / {readCardCount}
-              </Text>
-
-              <ChapterCarousel
-                lessonTitle={lesson.title}
-                lessonContent={lesson.content}
-                chapters={lesson.chapters}
-                chapterIndex={chapterIndex}
-                onChapterChange={setChapterIndex}
+          <View style={styles.topBar}>
+            <Pressable onPress={router.back} style={styles.iconButton}>
+              <MaterialIcons
+                name="arrow-back-ios-new"
+                size={18}
+                color="#ffffff"
               />
+            </Pressable>
+            <Pressable onPress={startLesson} style={styles.skipButton}>
+              <Text style={styles.skipText}>Skip</Text>
+            </Pressable>
+          </View>
 
-              <Pressable
-                onPress={goNextRead}
-                style={{
-                  backgroundColor: "#f8d568",
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  alignItems: "center",
-                  marginTop: 8,
-                }}
-              >
-                <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>
-                  {chapterIndex < readCardCount - 1
-                    ? "Next card"
-                    : lesson.quizzes.length === 0
-                      ? "Complete lesson"
-                      : "Go to Quiz"}
-                </Text>
-              </Pressable>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroEyebrow}>Story Lesson</Text>
+            <Text style={styles.heroTitle}>{lesson.title}</Text>
+            <Text style={styles.heroSubtitle}>
+              {lesson.hook ||
+                lesson.description ||
+                "A chaptered lesson told like a cinematic story."}
+            </Text>
+          </View>
+        </ImageBackground>
+
+        <View style={styles.card}>
+          <View style={styles.summaryPanel}>
+            <Text style={styles.summaryText}>
+              {lesson.content ||
+                lesson.description ||
+                "This story unfolds scene by scene, letting you read, decide, and remember what matters."}
+            </Text>
+          </View>
+
+          <View style={styles.metaRow}>
+            <View style={styles.metaCard}>
+              <Text style={styles.metaLabel}>Chapters</Text>
+              <Text style={styles.metaValue}>{sortedChapters.length}</Text>
             </View>
-          ) : null}
+            <View style={styles.metaCard}>
+              <Text style={styles.metaLabel}>Quiz Beats</Text>
+              <Text style={styles.metaValue}>{lesson.quizzes.length}</Text>
+            </View>
+            <View style={styles.metaCard}>
+              <Text style={styles.metaLabel}>Reward</Text>
+              <Text style={styles.metaValue}>{lesson.xpReward}</Text>
+            </View>
+          </View>
 
-          {stage === "quiz" && currentQuiz && normalized ? (
-            <View style={{ gap: 12 }}>
-              <Text style={{ color: "white", fontSize: 22, fontWeight: "700" }}>
-                Quiz
-              </Text>
-              <AnimatedLessonProgressBar
-                value={(quizIndex + 1) / Math.max(1, lesson.quizzes.length)}
-              />
-              <Text style={{ color: "#d0c2b0" }}>
-                Question {quizIndex + 1} / {lesson.quizzes.length}
-              </Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <Text
-                  style={{
-                    color: "#1a1a1a",
-                    backgroundColor: "#d4b87a",
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    fontSize: 12,
-                    fontWeight: "700",
-                  }}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Chapters</Text>
+            <Text style={styles.sectionCopy}>
+              Move through the story one scene at a time.
+            </Text>
+          </View>
+
+          <View style={styles.chapterList}>
+            {sortedChapters.map((chapter, index) => {
+              const isCompleted = completedChapterIds.includes(chapter.id);
+              const isCurrent = chapter.id === currentChapterId;
+              const isAccessible = isCompleted || isCurrent || index === 0;
+
+              return (
+                <Pressable
+                  key={chapter.id}
+                  disabled={!isAccessible}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/chapter/[id]",
+                      params: {
+                        id: chapter.id,
+                        lessonId: lesson.id,
+                        lessonSlug: lesson.slug,
+                        lessonTitle: lesson.title,
+                      },
+                    })
+                  }
+                  style={({ pressed }) => [
+                    styles.chapterCard,
+                    !isAccessible && styles.chapterCardLocked,
+                    pressed && styles.chapterCardPressed,
+                  ]}
                 >
-                  {normalized.isPoll
-                    ? "POLL"
-                    : normalized.type.replace("_", " ").toUpperCase()}
-                </Text>
-                {normalized.isPoll && currentQuiz.pollDescription ? (
-                  <Text style={{ color: "#d0c2b0", flex: 1 }}>
-                    {currentQuiz.pollDescription}
-                  </Text>
-                ) : null}
-              </View>
-              <Text style={{ color: "white", fontSize: 18, fontWeight: "700" }}>
-                {currentQuiz.question}
-              </Text>
-              {normalized.labels.map((label, index) => (
-                <QuizOptionCard
-                  key={`${currentQuiz.id}-${index}`}
-                  label={label}
-                  imageUrl={normalized.images[index] ?? undefined}
-                  selected={selectedOption === index}
-                  onPress={() => setSelectedOption(index)}
-                />
-              ))}
-              <Pressable
-                onPress={submitQuizAnswer}
-                disabled={selectedOption === null}
-                style={{
-                  backgroundColor: "#f8d568",
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  alignItems: "center",
-                  opacity: selectedOption === null ? 0.6 : 1,
-                }}
-              >
-                <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>
-                  {normalized.isPoll ? "Submit vote" : "Check"}
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
+                  <ImageBackground
+                    source={
+                      lesson.coverImage ? { uri: lesson.coverImage } : undefined
+                    }
+                    style={styles.chapterHero}
+                    imageStyle={styles.chapterHeroImage}
+                  >
+                    <View style={styles.chapterHeroShade} />
+                    <View style={styles.chapterMiniProgress}>
+                      <View
+                        style={[
+                          styles.chapterMiniProgressFill,
+                          {
+                            width: isCompleted
+                              ? "100%"
+                              : isCurrent
+                                ? "66%"
+                                : `${Math.max(18, 100 - index * 14)}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </ImageBackground>
+                  <View style={styles.chapterBody}>
+                    <Text style={styles.chapterEyebrow}>
+                      Chapter {chapter.order}
+                    </Text>
+                    <Text style={styles.chapterTitle}>{chapter.title}</Text>
+                    <Text style={styles.chapterExcerpt}>
+                      {getExcerpt(chapter.content)}
+                    </Text>
+                    <Text style={styles.chapterStatus}>
+                      {isCompleted
+                        ? "Completed"
+                        : isCurrent
+                          ? "Continue this chapter"
+                          : "Locked next in sequence"}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </ScrollView>
 
-          {stage === "feedback" ? (
-            <View style={{ gap: 10 }}>
-              <Text style={{ color: "white", fontSize: 22, fontWeight: "700" }}>
-                Feedback
-              </Text>
-              <Text style={{ color: "#d0c2b0" }}>How was this lesson?</Text>
-              <FeedbackStars rating={rating} onChange={setRating} />
-              <TextInput
-                value={comment}
-                onChangeText={setComment}
-                placeholder="Your comment..."
-                placeholderTextColor="#8a7d6f"
-                multiline
-                style={{
-                  minHeight: 110,
-                  textAlignVertical: "top",
-                  borderRadius: 10,
-                  backgroundColor: "#1b140e",
-                  borderWidth: 1,
-                  borderColor: "#3b2a1a",
-                  color: "white",
-                  padding: 10,
-                }}
-              />
-              <Pressable
-                onPress={submitFeedback}
-                style={{
-                  backgroundColor: "#f8d568",
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  alignItems: "center",
-                }}
-              >
-                <Text style={{ color: "#1a1a1a", fontWeight: "700" }}>
-                  Send Feedback
-                </Text>
-              </Pressable>
-              {status ? (
-                <Text style={{ color: "#d0c2b0" }}>{status}</Text>
-              ) : null}
-            </View>
-          ) : null}
-
-          {stage === "done" ? (
-            <View style={{ gap: 10 }}>
-              <Text
-                style={{ color: "#f8d568", fontWeight: "700", fontSize: 22 }}
-              >
-                Quest Complete
-              </Text>
-              <Text style={{ color: "white" }}>
-                Thank you — your journey continues.
-              </Text>
-            </View>
-          ) : null}
-        </ScrollView>
-      )}
-    </View>
+      <View style={styles.footer}>
+        <Pressable style={styles.primaryButton} onPress={startLesson}>
+          <Text style={styles.primaryButtonText}>
+            {completedChapterIds.length === sortedChapters.length &&
+            sortedChapters.length > 0
+              ? "Story Complete"
+              : completedChapterIds.length > 0
+                ? "Continue Story"
+                : "Start Lesson"}
+          </Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: palette.paper,
+  },
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: "#21051f",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  content: {
+    paddingBottom: 120,
+  },
+  hero: {
+    height: 360,
+    justifyContent: "space-between",
+    backgroundColor: palette.plum,
+  },
+  heroImage: {
+    resizeMode: "cover",
+  },
+  heroShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(38, 4, 31, 0.36)",
+  },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 6,
+  },
+  iconButton: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  skipButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  skipText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  heroCopy: {
+    paddingHorizontal: 20,
+    paddingBottom: 34,
+    gap: 10,
+  },
+  heroEyebrow: {
+    color: "#f3d58f",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+  },
+  heroTitle: {
+    color: "#ffffff",
+    fontSize: 38,
+    lineHeight: 42,
+    fontWeight: "900",
+  },
+  heroSubtitle: {
+    color: "#f0e7f2",
+    fontSize: 16,
+    lineHeight: 25,
+    fontWeight: "600",
+  },
+  card: {
+    marginTop: -26,
+    backgroundColor: palette.paper,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    gap: 20,
+  },
+  summaryPanel: {
+    backgroundColor: palette.paperSoft,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: palette.line,
+    padding: 18,
+  },
+  summaryText: {
+    color: palette.ink,
+    fontSize: 16,
+    lineHeight: 30,
+    fontWeight: "500",
+  },
+  metaRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  metaCard: {
+    flex: 1,
+    backgroundColor: "#fff8ee",
+    borderWidth: 1,
+    borderColor: "#f1d6ac",
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    gap: 4,
+  },
+  metaLabel: {
+    color: "#b8773f",
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  metaValue: {
+    color: palette.ink,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  sectionHeader: {
+    gap: 4,
+  },
+  sectionTitle: {
+    color: palette.ink,
+    fontSize: 26,
+    fontWeight: "900",
+  },
+  sectionCopy: {
+    color: palette.inkSoft,
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: "600",
+  },
+  chapterList: {
+    gap: 16,
+  },
+  chapterCard: {
+    backgroundColor: palette.paperSoft,
+    borderRadius: 28,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  chapterCardPressed: {
+    opacity: 0.95,
+  },
+  chapterCardLocked: {
+    opacity: 0.7,
+  },
+  chapterHero: {
+    height: 170,
+    padding: 14,
+    backgroundColor: palette.plum,
+  },
+  chapterHeroImage: {
+    resizeMode: "cover",
+  },
+  chapterHeroShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(38, 4, 31, 0.32)",
+  },
+  chapterMiniProgress: {
+    height: 12,
+    backgroundColor: "#fff",
+    borderRadius: 999,
+    overflow: "hidden",
+    padding: 2,
+  },
+  chapterMiniProgressFill: {
+    height: "100%",
+    backgroundColor: palette.mint,
+    borderRadius: 999,
+  },
+  chapterBody: {
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    gap: 8,
+  },
+  chapterEyebrow: {
+    color: "#d67d37",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1.1,
+  },
+  chapterTitle: {
+    color: palette.ink,
+    fontSize: 20,
+    lineHeight: 28,
+    fontWeight: "900",
+  },
+  chapterExcerpt: {
+    color: palette.ink,
+    fontSize: 15,
+    lineHeight: 25,
+    fontWeight: "500",
+  },
+  chapterStatus: {
+    color: palette.navy,
+    fontSize: 13,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: palette.paper,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 24,
+  },
+  primaryButton: {
+    backgroundColor: palette.navy,
+    borderRadius: 20,
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryButtonText: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+});

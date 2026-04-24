@@ -138,6 +138,7 @@ export async function handler(
       method: request.method,
       headers: createForwardHeaders(request, isMultipart),
     };
+    let parsedBody: unknown = undefined;
 
     // Handle request body based on content type
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -152,8 +153,8 @@ export async function handler(
           request.headers.get("content-length")
         ) {
           try {
-            const body = await request.json();
-            requestOptions.body = JSON.stringify(body);
+            parsedBody = await request.json();
+            requestOptions.body = JSON.stringify(parsedBody);
           } catch {
             // If body is not JSON, forward as-is
             requestOptions.body = request.body;
@@ -164,6 +165,9 @@ export async function handler(
 
     // Log the request
     console.log(`[API PROXY] ${request.method} ${backendUrl}`);
+    if (parsedBody !== undefined) {
+      console.log("[API PROXY] Request body:", parsedBody);
+    }
 
     // Forward request to backend
     const response = await fetch(backendUrl, requestOptions);
@@ -188,6 +192,9 @@ export async function handler(
     console.log(
       `[API PROXY] Response: ${response.status} ${request.method} ${backendUrl}`,
     );
+    if (!response.ok) {
+      console.error("[API PROXY] Error response body:", responseBody);
+    }
 
     // Return response
     return NextResponse.json(responseBody, { status: response.status });

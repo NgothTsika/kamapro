@@ -125,6 +125,9 @@ export default function EditLessonPage() {
 
   const [quizOpen, setQuizOpen] = useState(false);
   const [editingQuiz, setEditingQuiz] = useState<QuizAdmin | null>(null);
+  const [newQuizDefaults, setNewQuizDefaults] = useState<
+    Partial<QuizFormData> | undefined
+  >(undefined);
   const [translations, setTranslations] = useState<LessonTranslationAdmin[]>(
     [],
   );
@@ -314,13 +317,34 @@ export default function EditLessonPage() {
     }
   }
 
-  function openNewQuiz() {
+  const quizGroups = lesson
+    ? [
+        {
+          key: "lesson",
+          title: "Lesson Quiz Bank",
+          description: "Questions shown at lesson level after the chapter flow.",
+          chapterId: null as string | null,
+          quizzes: lesson.quizzes.filter((quiz) => !quiz.chapterId),
+        },
+        ...lesson.chapters.map((chapter) => ({
+          key: chapter.id,
+          title: `${chapter.order}. ${chapter.title}`,
+          description: "Questions attached directly to this chapter.",
+          chapterId: chapter.id,
+          quizzes: lesson.quizzes.filter((quiz) => quiz.chapterId === chapter.id),
+        })),
+      ]
+    : [];
+
+  function openNewQuiz(chapterId: string | null = null) {
     setEditingQuiz(null);
+    setNewQuizDefaults({ chapterId });
     setQuizOpen(true);
   }
 
   function openEditQuiz(q: QuizAdmin) {
     setEditingQuiz(q);
+    setNewQuizDefaults(undefined);
     setQuizOpen(true);
   }
 
@@ -331,15 +355,22 @@ export default function EditLessonPage() {
     try {
       const payload = {
         question: data.question.trim(),
+        chapterId: data.chapterId || null,
+        type: data.isPoll ? "poll" : data.type,
         options: data.options,
+        optionImages:
+          data.type === "image_choice"
+            ? (data.optionImages ?? []).map((image) => image.trim())
+            : null,
         correctOption: data.correctOption,
         explanation: data.explanation.trim() || null,
         order: data.order,
         heartLimit: data.heartLimit,
-        type: data.type,
-        optionImages: data.optionImages || null,
         difficulty: data.difficulty || null,
         timeLimitSeconds: data.timeLimitSeconds || null,
+        questionAudioUrl: data.questionAudioUrl || null,
+        isPoll: data.isPoll ?? false,
+        pollDescription: data.pollDescription?.trim() || null,
       };
 
       if (editingQuiz) {
@@ -349,6 +380,7 @@ export default function EditLessonPage() {
         await createAdminQuiz(token, lesson.id, payload);
         toast.success("Quiz added");
       }
+      setNewQuizDefaults(undefined);
       setQuizOpen(false);
       await load();
     } catch (e) {
@@ -965,73 +997,97 @@ export default function EditLessonPage() {
         </TabsContent>
 
         <TabsContent value="quizzes">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Quizzes</CardTitle>
-                <CardDescription>
-                  Multiple choice questions linked to this lesson.
-                </CardDescription>
-              </div>
-              <Button onClick={openNewQuiz}>
-                <Plus className="size-4" />
-                Add quiz
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Question</TableHead>
-                    <TableHead>Order</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lesson.quizzes.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3}>No quizzes yet.</TableCell>
-                    </TableRow>
-                  ) : (
-                    lesson.quizzes.map((q) => (
-                      <TableRow key={q.id}>
-                        <TableCell className="max-w-md truncate">
-                          {q.question}
-                        </TableCell>
-                        <TableCell>{q.order}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => void openQuizTranslationManager(q)}
-                            >
-                              <Languages className="size-4" />
-                              Translations
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openEditQuiz(q)}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="icon-sm"
-                              onClick={() => removeQuiz(q)}
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle>Quiz Groups</CardTitle>
+                  <CardDescription>
+                    Build a separate quiz bank for the lesson and for each chapter.
+                  </CardDescription>
+                </div>
+                <Button onClick={() => openNewQuiz(null)}>
+                  <Plus className="size-4" />
+                  Add lesson quiz
+                </Button>
+              </CardHeader>
+            </Card>
+
+            {quizGroups.map((group) => (
+              <Card key={group.key}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <div>
+                    <CardTitle>{group.title}</CardTitle>
+                    <CardDescription>{group.description}</CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => openNewQuiz(group.chapterId)}
+                  >
+                    <Plus className="size-4" />
+                    Add quiz
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Question</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Order</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {group.quizzes.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4}>No quizzes in this group yet.</TableCell>
+                        </TableRow>
+                      ) : (
+                        group.quizzes.map((q) => (
+                          <TableRow key={q.id}>
+                            <TableCell className="max-w-md truncate">
+                              {q.question}
+                            </TableCell>
+                            <TableCell className="capitalize">
+                              {q.type?.replace(/_/g, " ") || "multiple choice"}
+                            </TableCell>
+                            <TableCell>{q.order}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => void openQuizTranslationManager(q)}
+                                >
+                                  <Languages className="size-4" />
+                                  Translations
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openEditQuiz(q)}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="icon-sm"
+                                  onClick={() => removeQuiz(q)}
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </TabsContent>
         <TabsContent value="translations">
           <Card>
@@ -1226,12 +1282,19 @@ export default function EditLessonPage() {
 
       <EnhancedQuizDialog
         open={quizOpen}
-        onOpenChange={setQuizOpen}
+        onOpenChange={(open) => {
+          setQuizOpen(open);
+          if (!open) {
+            setEditingQuiz(null);
+            setNewQuizDefaults(undefined);
+          }
+        }}
         onSave={saveQuiz}
         initialData={
           editingQuiz
             ? {
                 question: editingQuiz.question,
+                chapterId: editingQuiz.chapterId || null,
                 type: (editingQuiz.type as QuizType) || "multiple_choice",
                 options: editingQuiz.options,
                 optionImages: editingQuiz.optionImages || undefined,
@@ -1245,11 +1308,15 @@ export default function EditLessonPage() {
                   | "hard"
                   | null as "easy" | "medium" | "hard" | undefined,
                 timeLimitSeconds: editingQuiz.timeLimitSeconds || undefined,
+                questionAudioUrl: editingQuiz.questionAudioUrl || null,
+                isPoll: editingQuiz.isPoll || editingQuiz.type === "poll",
+                pollDescription: editingQuiz.pollDescription || null,
               }
-            : undefined
+            : newQuizDefaults
         }
         title={editingQuiz ? "Edit Quiz" : "Create New Quiz"}
         lessonId={lesson.id}
+        chapters={lesson.chapters}
       />
 
       <Dialog open={translationOpen} onOpenChange={setTranslationOpen}>

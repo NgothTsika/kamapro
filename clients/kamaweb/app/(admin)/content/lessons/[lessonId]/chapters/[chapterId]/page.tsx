@@ -47,6 +47,7 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from "@/components/ui/native-select";
+import { FileUpload } from "@/components/file-upload";
 
 const STEP_TYPES: StepType[] = [
   "TEXT",
@@ -54,7 +55,6 @@ const STEP_TYPES: StepType[] = [
   "IMAGE_FULL",
   "POLL",
   "CHOICE",
-  "QUIZ_QUESTION",
   "RECAP",
   "CONTINUE_BUTTON",
 ];
@@ -63,6 +63,8 @@ type ChoiceOptionDraft = {
   text: string;
   nextStepId: string;
 };
+
+type ChapterQuizType = "true_false" | "multiple_choice" | "image_choice";
 
 type StepFormState = {
   type: StepType;
@@ -81,6 +83,9 @@ type StepFormState = {
   buttonText: string;
   pointsText: string;
   optionsText: string;
+  quizType: ChapterQuizType;
+  quizOptions: string[];
+  quizOptionImages: string[];
   correctOption: string;
   choiceOptions: ChoiceOptionDraft[];
 };
@@ -131,7 +136,7 @@ const STEP_TYPE_DETAILS: Record<
   },
   RECAP: {
     label: "Recap",
-    description: "Key takeaways before the quiz or ending.",
+    description: "Key takeaways before learners move into chapter quiz mode.",
     badgeClassName:
       "bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-100",
   },
@@ -163,11 +168,6 @@ const STEP_TEMPLATES: Array<{
     label: "Add recap",
     description: "Summarize what the learner should remember.",
   },
-  {
-    type: "QUIZ_QUESTION",
-    label: "Add quiz",
-    description: "Finish with a proper knowledge check.",
-  },
 ];
 
 function createDefaultStepForm(
@@ -191,6 +191,9 @@ function createDefaultStepForm(
     buttonText: "Continue",
     pointsText: "",
     optionsText: "",
+    quizType: "multiple_choice",
+    quizOptions: ["", ""],
+    quizOptionImages: ["", ""],
     correctOption: "0",
     choiceOptions: [
       { text: "", nextStepId: "" },
@@ -204,6 +207,29 @@ function trimLines(value: string) {
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeChapterQuizType(content: Record<string, unknown>): ChapterQuizType {
+  if (content.quizType === "true_false") return "true_false";
+  if (content.quizType === "image_choice") return "image_choice";
+
+  if (
+    Array.isArray(content.optionImages) &&
+    content.optionImages.some((image) => typeof image === "string" && image.trim())
+  ) {
+    return "image_choice";
+  }
+
+  const options = Array.isArray(content.options) ? content.options : [];
+  if (
+    options.length === 2 &&
+    String(options[0] ?? "").toLowerCase() === "true" &&
+    String(options[1] ?? "").toLowerCase() === "false"
+  ) {
+    return "true_false";
+  }
+
+  return "multiple_choice";
 }
 
 function toStepForm(step: ChapterStep): StepFormState {
@@ -268,12 +294,26 @@ function toStepForm(step: ChapterStep): StepFormState {
   }
 
   if (step.type === "QUIZ_QUESTION") {
+    const quizType = normalizeChapterQuizType(content);
+    const quizOptions = Array.isArray(content.options)
+      ? content.options.map((option) => String(option ?? ""))
+      : base.quizOptions;
+    const quizOptionImages = Array.isArray(content.optionImages)
+      ? content.optionImages.map((image) => String(image ?? ""))
+      : base.quizOptionImages;
+
     return {
       ...base,
       question: String(content.question ?? ""),
-      optionsText: Array.isArray(content.options)
-        ? content.options.join("\n")
-        : "",
+      quizType,
+      quizOptions:
+        quizType === "true_false" ? ["True", "False"] : quizOptions,
+      quizOptionImages:
+        quizType === "image_choice"
+          ? quizOptionImages.length > 0
+            ? quizOptionImages
+            : base.quizOptionImages
+          : base.quizOptionImages,
       correctOption: String(content.correctOption ?? 0),
       explanation: String(content.explanation ?? ""),
     };
@@ -473,6 +513,97 @@ export default function ChapterDetailPage() {
     }));
   }
 
+  function setQuizType(quizType: ChapterQuizType) {
+    setStepForm((current) => ({
+      ...current,
+      quizType,
+      quizOptions:
+        quizType === "true_false"
+          ? ["True", "False"]
+          : current.quizType === "true_false"
+            ? ["", ""]
+            : current.quizOptions.length >= 2
+              ? current.quizOptions
+              : ["", ""],
+      quizOptionImages:
+        quizType === "image_choice"
+          ? Array.from(
+              {
+                length: Math.max(
+                  2,
+                  current.quizType === "true_false"
+                    ? 2
+                    : current.quizOptions.length,
+                ),
+              },
+              (_, index) => current.quizOptionImages[index] ?? "",
+            )
+          : current.quizOptionImages,
+      correctOption: "0",
+    }));
+  }
+
+  function addQuizOption() {
+    setStepForm((current) => ({
+      ...current,
+      quizOptions: [...current.quizOptions, ""],
+      quizOptionImages:
+        current.quizType === "image_choice"
+          ? [...current.quizOptionImages, ""]
+          : current.quizOptionImages,
+    }));
+  }
+
+  function updateQuizOption(index: number, value: string) {
+    setStepForm((current) => ({
+      ...current,
+      quizOptions: current.quizOptions.map((option, optionIndex) =>
+        optionIndex === index ? value : option,
+      ),
+    }));
+  }
+
+  function updateQuizOptionImage(index: number, value: string) {
+    setStepForm((current) => ({
+      ...current,
+      quizOptionImages: current.quizOptionImages.map((image, imageIndex) =>
+        imageIndex === index ? value : image,
+      ),
+    }));
+  }
+
+  function removeQuizOption(index: number) {
+    setStepForm((current) => {
+      if (current.quizOptions.length <= 2) {
+        return current;
+      }
+
+      const nextOptions = current.quizOptions.filter(
+        (_, optionIndex) => optionIndex !== index,
+      );
+      const nextImages =
+        current.quizType === "image_choice"
+          ? current.quizOptionImages.filter(
+              (_, optionIndex) => optionIndex !== index,
+            )
+          : current.quizOptionImages;
+      const currentCorrect = Number(current.correctOption);
+      const nextCorrect =
+        currentCorrect === index
+          ? 0
+          : currentCorrect > index
+            ? currentCorrect - 1
+            : currentCorrect;
+
+      return {
+        ...current,
+        quizOptions: nextOptions,
+        quizOptionImages: nextImages,
+        correctOption: String(nextCorrect),
+      };
+    });
+  }
+
   function updateChoiceOption(
     index: number,
     field: keyof ChoiceOptionDraft,
@@ -614,13 +745,34 @@ export default function ChapterDetailPage() {
     }
 
     if (stepForm.type === "QUIZ_QUESTION") {
-      const options = trimLines(stepForm.optionsText);
+      const quizType = stepForm.quizType;
+      const rawQuizOptions = stepForm.quizOptions.map((option) => option.trim());
+      const options =
+        quizType === "true_false"
+          ? ["True", "False"]
+          : rawQuizOptions.filter(Boolean);
+      const optionImages =
+        quizType === "image_choice"
+          ? stepForm.quizOptionImages.map((image) => image.trim())
+          : [];
       const correctOption = Number(stepForm.correctOption);
       if (!stepForm.question.trim()) {
         throw new Error("Quiz steps need a question");
       }
       if (options.length < 2) {
         throw new Error("Quiz steps need at least 2 answers");
+      }
+      if (
+        quizType !== "true_false" &&
+        rawQuizOptions.some((option) => !option)
+      ) {
+        throw new Error("Fill in every quiz option before saving");
+      }
+      if (
+        quizType === "image_choice" &&
+        optionImages.some((image) => !image)
+      ) {
+        throw new Error("Image choice quizzes need an image for every option");
       }
       if (
         !Number.isInteger(correctOption) ||
@@ -635,8 +787,10 @@ export default function ChapterDetailPage() {
         type: stepForm.type,
         content: {
           question: stepForm.question.trim(),
+          quizType,
           options,
           correctOption,
+          ...(quizType === "image_choice" ? { optionImages } : {}),
           ...(stepForm.explanation.trim()
             ? { explanation: stepForm.explanation.trim() }
             : {}),
@@ -721,7 +875,7 @@ export default function ChapterDetailPage() {
           <h1 className="text-3xl font-bold">{chapter.title}</h1>
           <p className="text-muted-foreground">
             Build the full chapter journey: intro, story beats, interactions,
-            recap, and quiz.
+            recap, and a handoff into chapter quizzes.
           </p>
         </div>
       </div>
@@ -837,8 +991,8 @@ export default function ChapterDetailPage() {
 
           {!orderedSteps.length ? (
             <div className="rounded-lg border border-dashed py-10 text-center text-muted-foreground">
-              No steps yet. Start with a story step, then add polls, recap, and
-              quiz screens to complete the chapter.
+              No steps yet. Start with a story step, then add polls and a recap
+              to complete the chapter flow.
             </div>
           ) : (
             <div className="space-y-3">
@@ -1208,7 +1362,7 @@ export default function ChapterDetailPage() {
             )}
 
             {stepForm.type === "QUIZ_QUESTION" && (
-              <div className="grid gap-4">
+              <div className="grid gap-6">
                 <div>
                   <Label htmlFor="quizQuestion">Quiz Question</Label>
                   <Textarea
@@ -1224,37 +1378,254 @@ export default function ChapterDetailPage() {
                     rows={3}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="quizOptions">Answer Options</Label>
-                  <Textarea
-                    id="quizOptions"
-                    value={stepForm.optionsText}
-                    onChange={(e) =>
-                      setStepForm((current) => ({
-                        ...current,
-                        optionsText: e.target.value,
-                      }))
-                    }
-                    placeholder={"Correct answer\nDistractor 1\nDistractor 2"}
-                    rows={6}
-                  />
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Quiz Format</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Use the richer chapter quiz builder instead of the old
+                        single text-area setup.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {[
+                      {
+                        value: "true_false" as const,
+                        label: "True / False",
+                        description: "Fast checkpoint with a fixed answer pair.",
+                      },
+                      {
+                        value: "multiple_choice" as const,
+                        label: "Multiple Choice",
+                        description: "Standard chapter quiz with editable answers.",
+                      },
+                      {
+                        value: "image_choice" as const,
+                        label: "Image Choice",
+                        description: "Visual quiz with one image per answer.",
+                      },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setQuizType(option.value)}
+                        className={`rounded-lg border p-4 text-left transition ${
+                          stepForm.quizType === option.value
+                            ? "border-primary bg-primary/5 shadow-sm"
+                            : "bg-background hover:border-primary/50"
+                        }`}
+                      >
+                        <div className="font-medium">{option.label}</div>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {option.description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="correctOption">Correct Option Index</Label>
-                  <Input
-                    id="correctOption"
-                    type="number"
-                    min="0"
-                    value={stepForm.correctOption}
-                    onChange={(e) =>
-                      setStepForm((current) => ({
-                        ...current,
-                        correctOption: e.target.value,
-                      }))
-                    }
-                    placeholder="0 for first option, 1 for second..."
-                  />
-                </div>
+
+                {stepForm.quizType === "true_false" && (
+                  <div className="grid gap-3">
+                    <Label>Correct Answer</Label>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {["True", "False"].map((label, index) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() =>
+                            setStepForm((current) => ({
+                              ...current,
+                              correctOption: String(index),
+                            }))
+                          }
+                          className={`rounded-lg border p-4 text-left transition ${
+                            Number(stepForm.correctOption) === index
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "bg-background hover:border-primary/50"
+                          }`}
+                        >
+                          <div className="font-medium">{label}</div>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {Number(stepForm.correctOption) === index
+                              ? "Marked as correct"
+                              : "Tap to mark as correct"}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {stepForm.quizType === "multiple_choice" && (
+                  <div className="grid gap-4">
+                    <div className="flex items-center justify-between">
+                      <Label>Answer Options</Label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={addQuizOption}
+                        disabled={stepForm.quizOptions.length >= 6}
+                      >
+                        <Plus className="mr-1 h-4 w-4" />
+                        Add option
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-3">
+                      {stepForm.quizOptions.map((option, index) => (
+                        <div
+                          key={`${index}-${stepForm.quizType}`}
+                          className="flex items-end gap-2"
+                        >
+                          <div className="flex-1 grid gap-1">
+                            <Label htmlFor={`quiz-option-${index}`}>
+                              Option {index + 1}
+                            </Label>
+                            <Input
+                              id={`quiz-option-${index}`}
+                              value={option}
+                              onChange={(e) =>
+                                updateQuizOption(index, e.target.value)
+                              }
+                              placeholder={`Answer option ${index + 1}`}
+                            />
+                          </div>
+                          <Button
+                            size="sm"
+                            variant={
+                              Number(stepForm.correctOption) === index
+                                ? "default"
+                                : "outline"
+                            }
+                            onClick={() =>
+                              setStepForm((current) => ({
+                                ...current,
+                                correctOption: String(index),
+                              }))
+                            }
+                          >
+                            {Number(stepForm.correctOption) === index ? "✓" : "○"}
+                          </Button>
+                          {stepForm.quizOptions.length > 2 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => removeQuizOption(index)}
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {stepForm.quizType === "image_choice" && (
+                  <div className="grid gap-4">
+                    <div className="flex items-center justify-between">
+                      <Label>Image Answers</Label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={addQuizOption}
+                        disabled={stepForm.quizOptionImages.length >= 4}
+                      >
+                        <Plus className="mr-1 h-4 w-4" />
+                        Add image
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-4">
+                      {stepForm.quizOptionImages.map((image, index) => (
+                        <div
+                          key={`${index}-${stepForm.quizType}`}
+                          className="grid gap-3 rounded-lg border p-4"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <Label>Option {index + 1}</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Upload or paste the image for this answer.
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant={
+                                Number(stepForm.correctOption) === index
+                                  ? "default"
+                                  : "outline"
+                              }
+                              onClick={() =>
+                                setStepForm((current) => ({
+                                  ...current,
+                                  correctOption: String(index),
+                                }))
+                              }
+                            >
+                              {Number(stepForm.correctOption) === index
+                                ? "✓ Correct"
+                                : "Mark Correct"}
+                            </Button>
+                          </div>
+
+                          <FileUpload
+                            bucket="quiz-media"
+                            folder={lessonId}
+                            accepts="image"
+                            currentValue={image}
+                            onUploadComplete={(url) =>
+                              updateQuizOptionImage(index, url)
+                            }
+                          />
+
+                          <Input
+                            value={image}
+                            onChange={(e) =>
+                              updateQuizOptionImage(index, e.target.value)
+                            }
+                            placeholder="https://example.com/answer-image.jpg"
+                          />
+
+                          {stepForm.quizOptions[index] !== undefined && (
+                            <Input
+                              value={stepForm.quizOptions[index] ?? ""}
+                              onChange={(e) =>
+                                updateQuizOption(index, e.target.value)
+                              }
+                              placeholder="Optional label shown under the image"
+                            />
+                          )}
+
+                          {image ? (
+                            <div className="overflow-hidden rounded-lg border bg-muted">
+                              <img
+                                src={image}
+                                alt={`Quiz option ${index + 1}`}
+                                className="h-40 w-full object-cover"
+                              />
+                            </div>
+                          ) : null}
+
+                          {stepForm.quizOptionImages.length > 2 && (
+                            <div>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeQuizOption(index)}
+                              >
+                                Remove image option
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <Label htmlFor="quizExplanation">Feedback Explanation</Label>
                   <Textarea

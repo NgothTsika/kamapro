@@ -56,6 +56,22 @@ export type Character = {
   imageUrl?: string | null;
   rarityLevel?: string | null;
   story?: string;
+  xpThreshold?: number | null;
+  unlockLesson?: {
+    id: string;
+    slug: string;
+  } | null;
+  entityType?: string | null;
+  personType?: string | null;
+  placeType?: string | null;
+  eventType?: string | null;
+  traditionType?: string | null;
+  conceptType?: string | null;
+  metadata?: Record<string, unknown> | null;
+  birthYear?: number | null;
+  endYear?: number | null;
+  country?: string | null;
+  achievements?: string[] | null;
   categories?: Array<{
     category: {
       id: string;
@@ -162,6 +178,7 @@ export type LessonChapter = {
 /** Raw quiz row from GET /content/lessons/slug/:slug — options/optionImages are Json */
 export type LessonQuizQuestion = {
   id: string;
+  chapterId?: string | null;
   type?: string | null;
   question: string;
   options: unknown;
@@ -220,6 +237,7 @@ type RequestOptions = {
   method?: HttpMethod;
   token?: string | null;
   body?: unknown;
+  quietErrorStatuses?: number[];
 };
 
 export class ApiError extends Error {
@@ -265,10 +283,15 @@ async function apiRequest<T>(
     } catch {
       // ignore invalid response payload
     }
-    console.error(
-      `[API Error] ${fullUrl}: ${response.status} - ${message}`,
-      body,
+    const shouldLogError = !options.quietErrorStatuses?.includes(
+      response.status,
     );
+    if (shouldLogError) {
+      console.error(
+        `[API Error] ${fullUrl}: ${response.status} - ${message}`,
+        body,
+      );
+    }
     throw new ApiError(response.status, message);
   }
 
@@ -318,6 +341,7 @@ export async function loginWithGoogle(input: {
 export async function getMe(token: string): Promise<UserProfile> {
   const response = await apiRequest<{ user: UserProfile }>("/auth/me", {
     token,
+    quietErrorStatuses: [401],
   });
   return response.user;
 }
@@ -326,6 +350,7 @@ export async function logout(token: string): Promise<void> {
   await apiRequest<void>("/auth/logout", {
     method: "POST",
     token,
+    quietErrorStatuses: [401],
   });
 }
 

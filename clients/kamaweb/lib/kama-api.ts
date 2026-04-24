@@ -60,11 +60,13 @@ type ApiOptions = {
 
 class ApiError extends Error {
   readonly status: number;
+  readonly details?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, details?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -83,16 +85,23 @@ async function apiRequest<T>(
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
+    let details: string | undefined;
     try {
       const errorBody = (await response.json()) as {
         error?: string;
         message?: string;
+        details?: string;
       };
       message = errorBody.error ?? errorBody.message ?? message;
+      details = errorBody.details;
     } catch {
       // ignore non-json response body
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(
+      response.status,
+      details ? `${message} (${details})` : message,
+      details,
+    );
   }
 
   if (response.status === 204) {
@@ -524,7 +533,10 @@ export async function createAdminQuiz(
   lessonId: string,
   payload: {
     question: string;
+    chapterId?: string | null;
+    type?: "true_false" | "multiple_choice" | "image_choice" | "poll";
     options: string[];
+    optionImages?: string[] | null;
     correctOption?: number | null;
     explanation?: string | null;
     order?: number;
@@ -566,7 +578,10 @@ export async function updateAdminQuiz(
   quizId: string,
   payload: Partial<{
     question: string;
+    chapterId: string | null;
+    type: "true_false" | "multiple_choice" | "image_choice" | "poll";
     options: string[];
+    optionImages: string[] | null;
     correctOption: number | null;
     explanation: string | null;
     order: number;

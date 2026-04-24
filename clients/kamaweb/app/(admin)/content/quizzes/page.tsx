@@ -34,6 +34,7 @@ import { getAdminToken } from "@/lib/admin-auth";
 import {
   createAdminQuiz,
   deleteAdminQuiz,
+  getAdminLesson,
   getAdminTopics,
   updateAdminQuiz,
   getAdminLessons,
@@ -43,6 +44,7 @@ import type {
   AdminTopic,
   QuizAdmin,
   AdminLessonSummary,
+  Chapter,
 } from "@/lib/kama-types";
 
 export default function QuizzesPage() {
@@ -58,6 +60,25 @@ export default function QuizzesPage() {
   const [editingQuiz, setEditingQuiz] = useState<QuizAdmin | null>(null);
   const [lessonQuizzes, setLessonQuizzes] = useState<QuizAdmin[]>([]);
   const [managingLessonId, setManagingLessonId] = useState<string>("");
+  const [selectedLessonChapters, setSelectedLessonChapters] = useState<
+    Chapter[]
+  >([]);
+
+  const groupedLessonQuizzes = lessonQuizzes.reduce<
+    Array<{ label: string; quizzes: QuizAdmin[] }>
+  >((groups, quiz) => {
+    const chapter = selectedLessonChapters.find((item) => item.id === quiz.chapterId);
+    const label = chapter ? `${chapter.order}. ${chapter.title}` : "Lesson quiz";
+    const existingGroup = groups.find((group) => group.label === label);
+
+    if (existingGroup) {
+      existingGroup.quizzes.push(quiz);
+    } else {
+      groups.push({ label, quizzes: [quiz] });
+    }
+
+    return groups;
+  }, []);
 
   const load = useCallback(async () => {
     const token = getAdminToken();
@@ -88,22 +109,35 @@ export default function QuizzesPage() {
     ? lessons.filter((l) => l.topic?.id === selectedTopic)
     : [];
 
-  function openNewQuiz(lessonId: string) {
-    setSelectedLesson(lessonId);
-    setEditingQuiz(null);
-    setQuizOpen(true);
+  async function openNewQuiz(lessonId: string) {
+    const token = getAdminToken();
+    if (!token) return;
+
+    try {
+      const lesson = await getAdminLesson(token, lessonId);
+      setSelectedLesson(lessonId);
+      setSelectedLessonChapters(lesson.chapters);
+      setEditingQuiz(null);
+      setQuizOpen(true);
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Failed to load lesson quizzes",
+      );
+    }
   }
 
   async function openManageLessonQuizzes(lessonId: string) {
     const token = getAdminToken();
     if (!token) return;
     try {
-      const quizzes = await getAdminLessonQuizzes(token, lessonId);
-      console.log("📋 Loaded quizzes:", quizzes);
+      const [quizzes, lesson] = await Promise.all([
+        getAdminLessonQuizzes(token, lessonId),
+        getAdminLesson(token, lessonId),
+      ]);
       setLessonQuizzes(quizzes);
+      setSelectedLessonChapters(lesson.chapters);
       setManagingLessonId(lessonId);
     } catch (e) {
-      console.error("❌ Error loading quizzes:", e);
       toast.error(e instanceof Error ? e.message : "Failed to load quizzes");
     }
   }
@@ -114,7 +148,6 @@ export default function QuizzesPage() {
   }
 
   function openEditQuiz(quiz: QuizAdmin) {
-    console.log("✏️ Opening quiz for edit:", quiz);
     setSelectedLesson(quiz.lessonId);
     setEditingQuiz(quiz);
     setQuizOpen(true);
@@ -127,18 +160,22 @@ export default function QuizzesPage() {
     try {
       const payload = {
         question: data.question.trim(),
+        chapterId: data.chapterId || null,
         options: data.options,
         correctOption: data.correctOption,
         explanation: data.explanation.trim() || null,
         order: data.order,
         heartLimit: data.heartLimit,
-        type: data.type,
-        optionImages: data.optionImages || null,
+        type: data.isPoll ? "poll" : data.type,
+        optionImages:
+          data.type === "image_choice"
+            ? (data.optionImages ?? []).map((image) => image.trim())
+            : null,
         difficulty: data.difficulty || null,
         timeLimitSeconds: data.timeLimitSeconds || null,
         questionAudioUrl: data.questionAudioUrl || null,
-        isPoll: data.isPoll || false,
-        pollDescription: data.pollDescription || null,
+        isPoll: data.isPoll ?? false,
+        pollDescription: data.pollDescription?.trim() || null,
       };
 
       if (editingQuiz) {
@@ -268,7 +305,7 @@ export default function QuizzesPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => openNewQuiz(lesson.id)}
+                      onClick={() => void openNewQuiz(lesson.id)}
                       className="w-full"
                     >
                       <Plus className="size-3 mr-1" />
@@ -278,7 +315,7 @@ export default function QuizzesPage() {
                       variant={lesson._count.quizzes > 0 ? "default" : "ghost"}
                       size="sm"
                       disabled={lesson._count.quizzes === 0}
-                      onClick={() => openManageLessonQuizzes(lesson.id)}
+                      onClick={() => void openManageLessonQuizzes(lesson.id)}
                       className="w-full"
                     >
                       <Pencil className="size-3 mr-1" />
@@ -318,15 +355,18 @@ export default function QuizzesPage() {
                       quiz mode
                     </p>
                     <Button
-                      onClick={() => {
-                        setSelectedTopic(topic.id);
-                        openNewQuiz(topic.id);
-                      }}
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        toast.info(
+                          "Topic quiz banks are not wired to a backend yet. Use lesson quiz management for now.",
+                        )
+                      }
                       className="w-full"
                       size="sm"
                     >
                       <Plus className="size-3" />
-                      Add Topic Quiz
+                      Topic Quizzes Soon
                     </Button>
                   </CardContent>
                 </Card>
@@ -361,61 +401,68 @@ export default function QuizzesPage() {
                 No quizzes found for this lesson
               </p>
             ) : (
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Question</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Order</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {lessonQuizzes.map((quiz) => (
-                      <TableRow key={quiz.id}>
-                        <TableCell className="max-w-md">
-                          <p className="truncate text-sm">{quiz.question}</p>
-                        </TableCell>
-                        <TableCell className="text-sm capitalize">
-                          {quiz.type?.replace(/_/g, " ") || "N/A"}
-                        </TableCell>
-                        <TableCell className="text-sm">{quiz.order}</TableCell>
-                        <TableCell className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEditQuiz(quiz)}
-                          >
-                            <Pencil className="size-3" />
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={async () => {
-                              if (
-                                !confirm(
-                                  "Are you sure you want to delete this quiz?",
-                                )
-                              ) {
-                                return;
-                              }
-                              await deleteQuiz(quiz);
-                              await openManageLessonQuizzes(managingLessonId);
-                            }}
-                          >
-                            <Trash2 className="size-3" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="space-y-4">
+                {groupedLessonQuizzes.map((group) => (
+                  <div key={group.label} className="border rounded-lg overflow-hidden">
+                    <div className="border-b bg-muted/40 px-4 py-3">
+                      <p className="text-sm font-medium">{group.label}</p>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Question</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Order</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {group.quizzes.map((quiz) => (
+                          <TableRow key={quiz.id}>
+                            <TableCell className="max-w-md">
+                              <p className="truncate text-sm">{quiz.question}</p>
+                            </TableCell>
+                            <TableCell className="text-sm capitalize">
+                              {quiz.type?.replace(/_/g, " ") || "N/A"}
+                            </TableCell>
+                            <TableCell className="text-sm">{quiz.order}</TableCell>
+                            <TableCell className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openEditQuiz(quiz)}
+                              >
+                                <Pencil className="size-3" />
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={async () => {
+                                  if (
+                                    !confirm(
+                                      "Are you sure you want to delete this quiz?",
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  await deleteQuiz(quiz);
+                                  await openManageLessonQuizzes(managingLessonId);
+                                }}
+                              >
+                                <Trash2 className="size-3" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ))}
               </div>
             )}
             <div className="mt-4">
               <Button
-                onClick={() => openNewQuiz(managingLessonId)}
+                onClick={() => void openNewQuiz(managingLessonId)}
                 className="w-full"
               >
                 <Plus className="size-3 mr-2" />
@@ -435,6 +482,7 @@ export default function QuizzesPage() {
           editingQuiz
             ? {
                 question: editingQuiz.question,
+                chapterId: editingQuiz.chapterId || null,
                 type: (editingQuiz.type as QuizType) || "multiple_choice",
                 options: editingQuiz.options,
                 optionImages: editingQuiz.optionImages || undefined,
@@ -456,6 +504,7 @@ export default function QuizzesPage() {
         }
         title={editingQuiz ? "Edit Quiz" : "Create New Quiz"}
         lessonId={selectedLesson}
+        chapters={selectedLessonChapters}
       />
     </div>
   );

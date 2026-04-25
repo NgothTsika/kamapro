@@ -10,6 +10,7 @@ import {
   loseHeart,
   recoverHeart,
   restoreFullHearts,
+  restoreSingleHeart,
   getHeartRecoveryHistory,
 } from "./hearts.service";
 
@@ -132,6 +133,35 @@ gamificationRouter.post(
       message: "Hearts restored",
       data: updatedState,
     });
+  }),
+);
+
+/**
+ * POST /gamification/hearts/rewarded-restore
+ * Grant exactly one heart after a rewarded ad has been completed
+ */
+gamificationRouter.post(
+  "/hearts/rewarded-restore",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    try {
+      const updatedState = await restoreSingleHeart(req.user!.id, "rewarded_ad");
+
+      res.status(200).json({
+        success: true,
+        message: "Heart restored from rewarded ad",
+        data: updatedState,
+      });
+    } catch (error) {
+      if (error instanceof HttpError && error.statusCode === 400) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      } else {
+        throw error;
+      }
+    }
   }),
 );
 

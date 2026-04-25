@@ -366,6 +366,45 @@ export async function restoreFullHearts(
 }
 
 /**
+ * Restore a single heart without overfilling.
+ * Used for rewarded ad grants and other one-off recovery mechanics.
+ */
+export async function restoreSingleHeart(
+  userId: string,
+  reason: string = "rewarded_ad",
+): Promise<UserHeartsState> {
+  const userHearts = await syncRecoveredHeartsRecord(userId);
+
+  if (userHearts.hearts >= userHearts.maxHearts) {
+    throw new HttpError(400, "User already has maximum hearts");
+  }
+
+  const updated = await prisma.userHearts.update({
+    where: { userId },
+    data: {
+      hearts: userHearts.hearts + 1,
+      lastRecoveredAt: new Date(),
+      lastHeartLossAt:
+        userHearts.hearts + 1 >= userHearts.maxHearts
+          ? null
+          : userHearts.lastHeartLossAt,
+    },
+  });
+
+  await prisma.heartRecoveryEvent.create({
+    data: {
+      userId,
+      heartsRecovered: 1,
+      fromHearts: userHearts.hearts,
+      toHearts: updated.hearts,
+      recoveryType: reason,
+    },
+  });
+
+  return buildHeartState(updated);
+}
+
+/**
  * Set custom recovery time (for premium features or tier upgrades)
  */
 export async function setRecoveryTime(

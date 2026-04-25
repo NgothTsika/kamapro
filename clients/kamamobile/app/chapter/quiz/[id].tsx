@@ -317,10 +317,9 @@ export default function ChapterQuizPage() {
         : quizFeedback?.kind === "failed"
           ? {
               label: hasHearts ? "Start again" : "Out of hearts",
-              style:
-                hasHearts
-                  ? styles.footerButtonDanger
-                  : styles.footerButtonDisabled,
+              style: hasHearts
+                ? styles.footerButtonDanger
+                : styles.footerButtonDisabled,
               onPress: () => {
                 if (!hasHearts) {
                   setShowHeartGate(true);
@@ -376,7 +375,7 @@ export default function ChapterQuizPage() {
           { paddingBottom: insets.bottom + 132 },
         ]}
       >
-        <View style={styles.heroCard}>
+        {/* <View style={styles.heroCard}>
           <Text style={styles.sectionEyebrow}>
             {`Quiz ${currentQuizIndex + 1} of ${Math.max(chapterQuizzes.length, 1)}`}
           </Text>
@@ -384,7 +383,7 @@ export default function ChapterQuizPage() {
           {lessonTitle ? (
             <Text style={styles.heroCopy}>{lessonTitle}</Text>
           ) : null}
-        </View>
+        </View> */}
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>{currentQuiz.question}</Text>
@@ -599,7 +598,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   heartsRow: {
-    minWidth: 70,
+    minWidth: 80,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
@@ -711,11 +710,11 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   imageOptionBody: {
-    gap: 12,
+    gap: 10,
   },
   imageFrame: {
-    height: 190,
-    borderRadius: 18,
+    height: 180,
+    borderRadius: 5,
     backgroundColor: "#e8decf",
     borderWidth: 1,
     borderColor: storyTheme.line,

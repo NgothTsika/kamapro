@@ -9,8 +9,8 @@ import {
   type Character,
   type CharacterCollection,
 } from "@/lib";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -129,55 +129,61 @@ export default function HomeScreen() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      if (!token) {
-        setLoading(false);
-        return;
+  const load = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      try {
+        const dashboard = await getDashboard(token);
+        setHearts(dashboard.hearts.hearts);
+        setStreak(dashboard.streak.currentStreak);
+      } catch {
+        setHearts(0);
+        setStreak(0);
       }
 
       try {
-        setLoading(true);
-
-        try {
-          const dashboard = await getDashboard(token);
-          setHearts(dashboard.hearts.hearts);
-          setStreak(dashboard.streak.currentStreak);
-        } catch {
-          setHearts(0);
-          setStreak(0);
-        }
-
-        try {
-          const allCollections = await getCharacterCollections();
-          const sortedCollections = allCollections.sort((a, b) => a.order - b.order);
-          const hydratedCollections = await Promise.all(
-            sortedCollections.slice(0, 4).map(async (collection) => {
-              try {
-                return await getCharacterCollection(collection.id);
-              } catch {
-                return collection;
-              }
-            }),
-          );
-          setCollections(hydratedCollections);
-        } catch {
-          setCollections([]);
-        }
-
-        try {
-          const allCharacters = await getCharacters();
-          setCharacters(allCharacters);
-        } catch {
-          setCharacters([]);
-        }
-      } finally {
-        setLoading(false);
+        const allCollections = await getCharacterCollections();
+        const sortedCollections = allCollections.sort((a, b) => a.order - b.order);
+        const hydratedCollections = await Promise.all(
+          sortedCollections.slice(0, 4).map(async (collection) => {
+            try {
+              return await getCharacterCollection(collection.id);
+            } catch {
+              return collection;
+            }
+          }),
+        );
+        setCollections(hydratedCollections);
+      } catch {
+        setCollections([]);
       }
-    }
 
-    void load();
+      try {
+        const allCharacters = await getCharacters();
+        setCharacters(allCharacters);
+      } catch {
+        setCharacters([]);
+      }
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const cards = useMemo<HomeCard[]>(() => {
     if (!characters.length && !collections.length) return [{ type: "empty" }];

@@ -35,8 +35,10 @@ function getPublicQuizSelect(includeChapterId: boolean, language?: string) {
   return {
     id: true,
     ...(includeChapterId ? { chapterId: true } : {}),
+    type: true,
     question: true,
     options: true,
+    optionImages: true,
     explanation: true,
     heartLimit: true,
     timeLimitSeconds: true,

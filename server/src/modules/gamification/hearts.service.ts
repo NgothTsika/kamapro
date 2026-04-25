@@ -16,54 +16,31 @@ export interface UserHeartsState {
   recoveryTimeMs: number;
   nextRecoveryAt: Date | null;
   willRecover: boolean;
+  timeUntilNextHeartMs: number;
+  isPremium: boolean;
 }
 
-/**
- * Get current heart state for a user
- */
-export async function getUserHearts(userId: string): Promise<UserHeartsState> {
-  const userHearts = await prisma.userHearts.findUnique({
-    where: { userId },
-  });
+type HeartConfigRecord = {
+  heartsMaxHearts: number;
+  heartsRecoveryTimeMs: number;
+  heartsPremiumRecoveryTimeMs: number;
+};
 
-  if (!userHearts) {
-    throw new HttpError(404, "User hearts not found");
-  }
-
-  // Calculate if hearts should recover
-  const now = new Date();
-  const heartRecoveryTime = calculateHeartRecovery(
-    userHearts.lastHeartLossAt,
-    userHearts.recoveryTimeMs,
-  );
-
-  return {
-    hearts: userHearts.hearts,
-    maxHearts: userHearts.maxHearts,
-    lastHeartLossAt: userHearts.lastHeartLossAt,
-    lastRecoveredAt: userHearts.lastRecoveredAt,
-    recoveryTimeMs: userHearts.recoveryTimeMs,
-    nextRecoveryAt: heartRecoveryTime.nextRecoveryAt,
-    willRecover: heartRecoveryTime.willRecover,
-  };
-}
-
-/**
- * Initialize hearts for a new user
- * Uses the configured max hearts from gamification settings
- */
-export async function initializeUserHearts(userId: string) {
-  // Fetch gamification config for configured max hearts
+async function getOrCreateHeartConfig(): Promise<HeartConfigRecord> {
   let config = await prisma.gameConfig.findUnique({
     where: { id: "gamification" },
+    select: {
+      heartsMaxHearts: true,
+      heartsRecoveryTimeMs: true,
+      heartsPremiumRecoveryTimeMs: true,
+    },
   });
 
-  // Create default config if not exists
   if (!config) {
     config = await prisma.gameConfig.create({
       data: {
         id: "gamification",
-        heartsMaxHearts: 3,
+        heartsMaxHearts: 5,
         heartsRecoveryTimeMs: 3600000,
         heartsPremiumRecoveryTimeMs: 1800000,
         streaksCheckInHours: 24,
@@ -74,9 +51,182 @@ export async function initializeUserHearts(userId: string) {
         gamificationEnabled: true,
         gamificationEventMultiplier: 1.0,
       },
+      select: {
+        heartsMaxHearts: true,
+        heartsRecoveryTimeMs: true,
+        heartsPremiumRecoveryTimeMs: true,
+      },
     });
   }
 
+  return config;
+}
+
+function isPremiumActive(premiumUntil: Date | null | undefined) {
+  return Boolean(premiumUntil && premiumUntil.getTime() > Date.now());
+}
+
+function getEffectiveRecoveryTimeMs(
+  config: HeartConfigRecord,
+  premiumUntil: Date | null | undefined,
+) {
+  return isPremiumActive(premiumUntil)
+    ? config.heartsPremiumRecoveryTimeMs
+    : config.heartsRecoveryTimeMs;
+}
+
+async function getOrCreateUserHearts(userId: string) {
+  const config = await getOrCreateHeartConfig();
+
+  let record = await prisma.userHearts.findUnique({
+    where: { userId },
+  });
+
+  if (!record) {
+    record = await prisma.userHearts.create({
+      data: {
+        userId,
+        hearts: config.heartsMaxHearts,
+        maxHearts: config.heartsMaxHearts,
+        recoveryTimeMs: config.heartsRecoveryTimeMs,
+      },
+    });
+  }
+
+  return { config, record };
+}
+
+async function syncRecoveredHeartsRecord(userId: string) {
+  const { config, record } = await getOrCreateUserHearts(userId);
+  const effectiveRecoveryTimeMs = getEffectiveRecoveryTimeMs(
+    config,
+    record.premiumUntil,
+  );
+
+  const configNeedsSync =
+    record.maxHearts !== config.heartsMaxHearts ||
+    record.recoveryTimeMs !== effectiveRecoveryTimeMs ||
+    record.hearts > config.heartsMaxHearts;
+
+  let current = record;
+
+  if (configNeedsSync) {
+    current = await prisma.userHearts.update({
+      where: { userId },
+      data: {
+        maxHearts: config.heartsMaxHearts,
+        recoveryTimeMs: effectiveRecoveryTimeMs,
+        hearts: Math.min(record.hearts, config.heartsMaxHearts),
+        lastHeartLossAt:
+          Math.min(record.hearts, config.heartsMaxHearts) >=
+          config.heartsMaxHearts
+            ? null
+            : record.lastHeartLossAt,
+      },
+    });
+  }
+
+  if (
+    current.hearts >= current.maxHearts ||
+    !current.lastHeartLossAt ||
+    current.recoveryTimeMs <= 0
+  ) {
+    return current;
+  }
+
+  const elapsedMs = Date.now() - current.lastHeartLossAt.getTime();
+  const recoveredSteps = Math.floor(elapsedMs / current.recoveryTimeMs);
+
+  if (recoveredSteps <= 0) {
+    return current;
+  }
+
+  const heartsToRecover = Math.min(
+    recoveredSteps,
+    current.maxHearts - current.hearts,
+  );
+
+  if (heartsToRecover <= 0) {
+    return current;
+  }
+
+  const recoveredHearts = current.hearts + heartsToRecover;
+  const nextLossAnchor =
+    recoveredHearts >= current.maxHearts
+      ? null
+      : new Date(
+          current.lastHeartLossAt.getTime() +
+            heartsToRecover * current.recoveryTimeMs,
+        );
+
+  const updated = await prisma.userHearts.update({
+    where: { userId },
+    data: {
+      hearts: recoveredHearts,
+      lastRecoveredAt: new Date(),
+      lastHeartLossAt: nextLossAnchor,
+    },
+  });
+
+  await prisma.heartRecoveryEvent.create({
+    data: {
+      userId,
+      heartsRecovered: heartsToRecover,
+      fromHearts: current.hearts,
+      toHearts: updated.hearts,
+      recoveryType: "automatic",
+    },
+  });
+
+  return updated;
+}
+
+function buildHeartState(userHearts: {
+  hearts: number;
+  maxHearts: number;
+  lastHeartLossAt: Date | null;
+  lastRecoveredAt: Date | null;
+  recoveryTimeMs: number;
+  premiumUntil?: Date | null;
+}): UserHeartsState {
+  const heartRecoveryTime = calculateHeartRecovery(
+    userHearts.lastHeartLossAt,
+    userHearts.recoveryTimeMs,
+  );
+  const nextRecoveryAt =
+    userHearts.hearts >= userHearts.maxHearts
+      ? null
+      : heartRecoveryTime.nextRecoveryAt;
+
+  return {
+    hearts: userHearts.hearts,
+    maxHearts: userHearts.maxHearts,
+    lastHeartLossAt: userHearts.lastHeartLossAt,
+    lastRecoveredAt: userHearts.lastRecoveredAt,
+    recoveryTimeMs: userHearts.recoveryTimeMs,
+    nextRecoveryAt,
+    willRecover: heartRecoveryTime.willRecover,
+    timeUntilNextHeartMs: nextRecoveryAt
+      ? Math.max(0, nextRecoveryAt.getTime() - Date.now())
+      : 0,
+    isPremium: isPremiumActive(userHearts.premiumUntil),
+  };
+}
+
+/**
+ * Get current heart state for a user
+ */
+export async function getUserHearts(userId: string): Promise<UserHeartsState> {
+  const userHearts = await syncRecoveredHeartsRecord(userId);
+  return buildHeartState(userHearts);
+}
+
+/**
+ * Initialize hearts for a new user
+ * Uses the configured max hearts from gamification settings
+ */
+export async function initializeUserHearts(userId: string) {
+  const config = await getOrCreateHeartConfig();
   const configuredMaxHearts = config.heartsMaxHearts;
 
   return await prisma.userHearts.create({
@@ -96,13 +246,7 @@ export async function loseHeart(
   userId: string,
   reason: string = "lesson_failure",
 ): Promise<UserHeartsState> {
-  const userHearts = await prisma.userHearts.findUnique({
-    where: { userId },
-  });
-
-  if (!userHearts) {
-    throw new HttpError(404, "User hearts not found");
-  }
+  const userHearts = await syncRecoveredHeartsRecord(userId);
 
   if (userHearts.hearts <= 0) {
     throw new HttpError(400, "User has no hearts left");
@@ -129,36 +273,24 @@ export async function loseHeart(
     },
   });
 
-  const heartRecoveryTime = calculateHeartRecovery(
-    updated.lastHeartLossAt,
-    updated.recoveryTimeMs,
-  );
-
-  return {
-    hearts: updated.hearts,
-    maxHearts: updated.maxHearts,
-    lastHeartLossAt: updated.lastHeartLossAt,
-    lastRecoveredAt: updated.lastRecoveredAt,
-    recoveryTimeMs: updated.recoveryTimeMs,
-    nextRecoveryAt: heartRecoveryTime.nextRecoveryAt,
-    willRecover: heartRecoveryTime.willRecover,
-  };
+  return buildHeartState(updated);
 }
 
 /**
  * Recover one heart (if recovery time has passed)
  */
 export async function recoverHeart(userId: string): Promise<UserHeartsState> {
-  const userHearts = await prisma.userHearts.findUnique({
-    where: { userId },
-  });
-
-  if (!userHearts) {
-    throw new HttpError(404, "User hearts not found");
-  }
+  const userHearts = await syncRecoveredHeartsRecord(userId);
 
   if (userHearts.hearts >= userHearts.maxHearts) {
     throw new HttpError(400, "User already has maximum hearts");
+  }
+
+  if (!userHearts.lastHeartLossAt) {
+    throw new HttpError(
+      400,
+      "Hearts are not ready to recover yet",
+    );
   }
 
   const heartRecoveryTime = calculateHeartRecovery(
@@ -173,12 +305,13 @@ export async function recoverHeart(userId: string): Promise<UserHeartsState> {
     );
   }
 
-  // Recover one heart
   const updated = await prisma.userHearts.update({
     where: { userId },
     data: {
       hearts: userHearts.hearts + 1,
       lastRecoveredAt: new Date(),
+      lastHeartLossAt:
+        userHearts.hearts + 1 >= userHearts.maxHearts ? null : new Date(),
     },
   });
 
@@ -193,20 +326,7 @@ export async function recoverHeart(userId: string): Promise<UserHeartsState> {
     },
   });
 
-  const newHeartRecoveryTime = calculateHeartRecovery(
-    updated.lastHeartLossAt,
-    updated.recoveryTimeMs,
-  );
-
-  return {
-    hearts: updated.hearts,
-    maxHearts: updated.maxHearts,
-    lastHeartLossAt: updated.lastHeartLossAt,
-    lastRecoveredAt: updated.lastRecoveredAt,
-    recoveryTimeMs: updated.recoveryTimeMs,
-    nextRecoveryAt: newHeartRecoveryTime.nextRecoveryAt,
-    willRecover: newHeartRecoveryTime.willRecover,
-  };
+  return buildHeartState(updated);
 }
 
 /**
@@ -216,13 +336,7 @@ export async function restoreFullHearts(
   userId: string,
   reason: string = "achievement",
 ): Promise<UserHeartsState> {
-  const userHearts = await prisma.userHearts.findUnique({
-    where: { userId },
-  });
-
-  if (!userHearts) {
-    throw new HttpError(404, "User hearts not found");
-  }
+  const userHearts = await syncRecoveredHeartsRecord(userId);
 
   const heartsRecovered = userHearts.maxHearts - userHearts.hearts;
 
@@ -231,6 +345,7 @@ export async function restoreFullHearts(
     data: {
       hearts: userHearts.maxHearts,
       lastRecoveredAt: new Date(),
+      lastHeartLossAt: null,
     },
   });
 
@@ -247,15 +362,7 @@ export async function restoreFullHearts(
     });
   }
 
-  return {
-    hearts: updated.hearts,
-    maxHearts: updated.maxHearts,
-    lastHeartLossAt: updated.lastHeartLossAt,
-    lastRecoveredAt: updated.lastRecoveredAt,
-    recoveryTimeMs: updated.recoveryTimeMs,
-    nextRecoveryAt: null,
-    willRecover: false,
-  };
+  return buildHeartState(updated);
 }
 
 /**

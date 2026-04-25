@@ -4,10 +4,8 @@ import { prisma } from "../../lib/prisma";
 import { asyncHandler } from "../../lib/http";
 import { requireAuth } from "../../middleware/auth.middleware";
 import { HttpError } from "../../lib/errors";
-import {
-  onQuizFailure,
-  onQuizSuccess,
-} from "../gamification/gamification.integration";
+import { onQuizSuccess } from "../gamification/gamification.integration";
+import { getUserHearts } from "../gamification/hearts.service";
 
 export const quizRouter = Router();
 
@@ -26,17 +24,24 @@ quizRouter.post(
       select: {
         id: true,
         isActive: true,
-        heartLimit: true,
       },
     });
     if (!quiz) throw new HttpError(404, "Quiz not found");
     if (!quiz.isActive) throw new HttpError(400, "Quiz is disabled");
 
+    const userHearts = await getUserHearts(req.user!.id);
+    if (userHearts.hearts <= 0) {
+      throw new HttpError(
+        400,
+        "You have no hearts left. Wait for recovery or upgrade to premium.",
+      );
+    }
+
     const session = await prisma.quizSession.create({
       data: {
         userId: req.user!.id,
         quizId: quiz.id,
-        heartsRemaining: quiz.heartLimit ?? 4,
+        heartsRemaining: userHearts.hearts,
       },
     });
 
@@ -135,11 +140,26 @@ quizRouter.post(
       });
       if (!quiz) throw new HttpError(404, "Quiz not found");
 
+      const userHearts = await tx.userHearts.findUnique({
+        where: { userId: req.user!.id },
+        select: {
+          hearts: true,
+          totalHeartLosses: true,
+        },
+      });
+      if (!userHearts) throw new HttpError(404, "User hearts not found");
+      if (userHearts.hearts <= 0) {
+        throw new HttpError(
+          400,
+          "You have no hearts left. Wait for recovery or upgrade to premium.",
+        );
+      }
+
       const isCorrect = selectedOption === quiz.correctOption;
       const heartLost = !isCorrect;
       const newHearts = heartLost
-        ? Math.max(0, session.heartsRemaining - 1)
-        : session.heartsRemaining;
+        ? Math.max(0, userHearts.hearts - 1)
+        : userHearts.hearts;
 
       const attempt = await tx.quizAttempt.create({
         data: {
@@ -172,6 +192,27 @@ quizRouter.post(
         },
       });
 
+      if (heartLost) {
+        await tx.userHearts.update({
+          where: { userId: req.user!.id },
+          data: {
+            hearts: newHearts,
+            lastHeartLossAt: now,
+            totalHeartLosses: userHearts.totalHeartLosses + 1,
+          },
+        });
+
+        await tx.heartRecoveryEvent.create({
+          data: {
+            userId: req.user!.id,
+            heartsRecovered: 0,
+            fromHearts: userHearts.hearts,
+            toHearts: newHearts,
+            recoveryType: "loss",
+          },
+        });
+      }
+
       // Award XP to the user only on first correct completion
       if (isCorrect && passed) {
         const xpEarned = quiz.lesson?.xpReward ?? 10;
@@ -203,15 +244,13 @@ quizRouter.post(
       passed: transactionResult.passed,
     };
 
+    payload.heartState = await getUserHearts(req.user!.id);
+
     // Trigger gamification integration after transaction completes
     try {
       if (transactionResult.isCorrect) {
         // On success: record activity and award XP bonus
         const gamificationResult = await onQuizSuccess(req.user!.id, 5);
-        payload.gamification = gamificationResult;
-      } else if (transactionResult.completedAt && !transactionResult.passed) {
-        // On failure: lose heart and get motivational message
-        const gamificationResult = await onQuizFailure(req.user!.id, "quiz");
         payload.gamification = gamificationResult;
       }
     } catch (error) {

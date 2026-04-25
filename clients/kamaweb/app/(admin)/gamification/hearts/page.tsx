@@ -44,7 +44,7 @@ interface UserHearts {
   maxHearts: number;
   configuredMaxHearts?: number;
   lastHeartLossAt: string | null;
-  nextRecoveryAt: string;
+  nextRecoveryAt: string | null;
   user: {
     id: string;
     username: string;
@@ -311,10 +311,15 @@ export default function HeartsManagement() {
                           {configuredMaxHearts ?? h.maxHearts}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {new Date(h.nextRecoveryAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {h.nextRecoveryAt
+                            ? new Date(h.nextRecoveryAt).toLocaleTimeString(
+                                [],
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                },
+                              )
+                            : "Full"}
                         </TableCell>
                         <TableCell className="text-right">
                           <Dialog

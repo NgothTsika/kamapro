@@ -100,9 +100,23 @@ export function EnhancedQuizDialog({
       options:
         newType === "true_false"
           ? ["True", "False"]
-          : (initialData?.options ?? ["", ""]),
+          : newType === "image_choice"
+            ? (initialData?.options?.length
+                ? initialData.options
+                : ["", ""]).slice(
+                0,
+                Math.max(2, initialData?.optionImages?.length || 2),
+              )
+            : (initialData?.options ?? ["", ""]),
       optionImages:
-        newType === "image_choice" ? (initialData?.optionImages ?? []) : [],
+        newType === "image_choice"
+          ? (initialData?.optionImages?.length
+              ? initialData.optionImages
+              : ["", ""]).slice(
+              0,
+              Math.max(2, initialData?.options?.length || 2),
+            )
+          : [],
       correctOption: isPoll ? null : (initialData?.correctOption ?? 0),
       explanation: initialData?.explanation || "",
       order: initialData?.order || 0,
@@ -123,8 +137,21 @@ export function EnhancedQuizDialog({
       type: newType,
       isPoll: nextIsPoll,
       options:
-        newType === "true_false" ? ["True", "False"] : f.options || ["", ""],
-      optionImages: newType === "image_choice" ? f.optionImages || [] : [],
+        newType === "true_false"
+          ? ["True", "False"]
+          : newType === "image_choice"
+            ? (f.options?.length ? f.options : ["", ""]).slice(
+                0,
+                Math.max(2, f.optionImages?.length || 2),
+              )
+            : f.options || ["", ""],
+      optionImages:
+        newType === "image_choice"
+          ? (f.optionImages?.length ? f.optionImages : ["", ""]).slice(
+              0,
+              Math.max(2, f.options?.length || 2),
+            )
+          : [],
       correctOption: nextIsPoll ? null : (f.correctOption ?? 0),
     }));
   };
@@ -176,6 +203,24 @@ export function EnhancedQuizDialog({
     if (form.options.length < 2) {
       alert("At least 2 options are required");
       return;
+    }
+
+    if (quizType === "image_choice") {
+      const imageCount = form.optionImages?.length || 0;
+      if (imageCount < 2) {
+        alert("Add at least 2 image options");
+        return;
+      }
+
+      if (imageCount !== form.options.length) {
+        alert("Each image option needs a matching label");
+        return;
+      }
+
+      if (form.optionImages?.some((image) => !image.trim())) {
+        alert("All image options must include an image");
+        return;
+      }
     }
 
     if (quizType !== "true_false" && form.options.some((opt) => !opt.trim())) {
@@ -406,6 +451,7 @@ export function EnhancedQuizDialog({
                     onClick={() => {
                       setForm((f) => ({
                         ...f,
+                        options: [...f.options, ""],
                         optionImages: [...(f.optionImages || []), ""],
                       }));
                     }}
@@ -442,6 +488,15 @@ export function EnhancedQuizDialog({
                         </Button>
                       </div>
 
+                      <div className="grid gap-1">
+                        <Label className="text-xs">Option {idx + 1} Label</Label>
+                        <Input
+                          value={form.options[idx] || ""}
+                          onChange={(e) => updateOption(idx, e.target.value)}
+                          placeholder={`Label for image ${idx + 1}`}
+                        />
+                      </div>
+
                       <FileUpload
                         bucket="quiz-media"
                         folder={lessonId}
@@ -475,9 +530,17 @@ export function EnhancedQuizDialog({
                           onClick={() => {
                             setForm((f) => ({
                               ...f,
+                              options: f.options.filter((_, i) => i !== idx),
                               optionImages: (f.optionImages || []).filter(
                                 (_, i) => i !== idx,
                               ),
+                              correctOption:
+                                f.correctOption === idx
+                                  ? 0
+                                  : f.correctOption !== null &&
+                                      f.correctOption > idx
+                                    ? f.correctOption - 1
+                                    : f.correctOption,
                             }));
                           }}
                         >

@@ -1,5 +1,6 @@
 import { prisma } from "../../../lib/prisma";
 import { HttpError } from "../../../lib/errors";
+import { getUserHearts } from "../../gamification/hearts.service";
 
 export class GamificationAdminService {
   /**
@@ -15,19 +16,8 @@ export class GamificationAdminService {
     const config = await this.getGamificationConfig();
     const configuredMaxHearts = config.hearts.maxHearts;
 
-    const validSortFields = {
-      hearts: "hearts",
-      lastLoss: "lastHeartLossAt",
-      recovery: "nextRecoveryTime",
-    };
-
-    const orderBy = { [validSortFields[sortBy]]: order };
-
-    const [hearts, total] = await Promise.all([
+    const [heartRows, total] = await Promise.all([
       prisma.userHearts.findMany({
-        take: limit,
-        skip: offset,
-        orderBy,
         include: {
           user: {
             select: {
@@ -42,11 +32,35 @@ export class GamificationAdminService {
       prisma.userHearts.count(),
     ]);
 
+    const hearts = await Promise.all(
+      heartRows.map(async (row) => ({
+        ...row,
+        ...(await getUserHearts(row.userId)),
+      })),
+    );
+
+    hearts.sort((a, b) => {
+      if (sortBy === "lastLoss") {
+        const aValue = a.lastHeartLossAt ? a.lastHeartLossAt.getTime() : 0;
+        const bValue = b.lastHeartLossAt ? b.lastHeartLossAt.getTime() : 0;
+        return order === "asc" ? aValue - bValue : bValue - aValue;
+      }
+
+      if (sortBy === "recovery") {
+        const aValue = a.nextRecoveryAt ? a.nextRecoveryAt.getTime() : 0;
+        const bValue = b.nextRecoveryAt ? b.nextRecoveryAt.getTime() : 0;
+        return order === "asc" ? aValue - bValue : bValue - aValue;
+      }
+
+      return order === "asc" ? a.hearts - b.hearts : b.hearts - a.hearts;
+    });
+
+    const paginatedHearts = hearts.slice(offset, offset + limit);
+
     return {
-      data: hearts.map((h) => ({
+      data: paginatedHearts.map((h) => ({
         ...h,
         configuredMaxHearts,
-        nextRecoveryAt: this.calculateNextRecoveryTime(h),
       })),
       total,
       limit,
@@ -63,19 +77,21 @@ export class GamificationAdminService {
     const config = await this.getGamificationConfig();
     const configuredMaxHearts = config.hearts.maxHearts;
 
-    const hearts = await prisma.userHearts.findMany();
+    const heartRows = await prisma.userHearts.findMany();
     const events = await prisma.heartRecoveryEvent.findMany();
+    const hearts = await Promise.all(
+      heartRows.map(async (row) => ({
+        ...row,
+        ...(await getUserHearts(row.userId)),
+      })),
+    );
 
     const totalUsers = hearts.length;
     const heartsWithMax = hearts.reduce((sum, h) => sum + h.hearts, 0);
     const avgHearts = totalUsers > 0 ? heartsWithMax / totalUsers : 0;
 
     const recoveryTimes = hearts
-      .filter((h) => h.lastHeartLossAt && h.lastHeartLossAt < new Date())
-      .map((h) => {
-        const recovered = this.calculateNextRecoveryTime(h);
-        return recovered.getTime() - new Date().getTime();
-      })
+      .map((h) => h.timeUntilNextHeartMs)
       .filter((t) => t > 0);
 
     const avgRecoveryTime =
@@ -86,7 +102,8 @@ export class GamificationAdminService {
     return {
       totalUsers,
       avgHearts: Math.round(avgHearts * 100) / 100,
-      totalHeartLosses: events.length,
+      totalHeartLosses: events.filter((event) => event.recoveryType === "loss")
+        .length,
       heartsRecovered: events.reduce((sum, e) => sum + e.heartsRecovered, 0),
       avgRecoveryTimeMs: Math.round(avgRecoveryTime),
       configuredMaxHearts,
@@ -154,7 +171,10 @@ export class GamificationAdminService {
       where: { userId },
       data: {
         hearts: newHearts,
-        lastHeartLossAt: null,
+        lastHeartLossAt:
+          newHearts >= configuredMaxHearts ? null : new Date(),
+        maxHearts: configuredMaxHearts,
+        recoveryTimeMs: config.hearts.recoveryTimeMs,
       },
     });
 
@@ -463,7 +483,7 @@ export class GamificationAdminService {
       config = await prisma.gameConfig.create({
         data: {
           id: "gamification",
-          heartsMaxHearts: 4,
+          heartsMaxHearts: 5,
           heartsRecoveryTimeMs: 3600000,
           heartsPremiumRecoveryTimeMs: 1800000,
           streaksCheckInHours: 24,
@@ -604,6 +624,35 @@ export class GamificationAdminService {
       data: updateData,
     });
 
+    if (
+      newConfig.hearts?.maxHearts !== undefined ||
+      newConfig.hearts?.recoveryTimeMs !== undefined ||
+      newConfig.hearts?.premiumRecoveryTimeMs !== undefined
+    ) {
+      const nextMaxHearts =
+        newConfig.hearts?.maxHearts ?? updated.heartsMaxHearts;
+      const nextRecoveryTimeMs =
+        newConfig.hearts?.recoveryTimeMs ?? updated.heartsRecoveryTimeMs;
+
+      await prisma.userHearts.updateMany({
+        data: {
+          maxHearts: nextMaxHearts,
+          recoveryTimeMs: nextRecoveryTimeMs,
+        },
+      });
+
+      await prisma.userHearts.updateMany({
+        where: {
+          hearts: {
+            gt: nextMaxHearts,
+          },
+        },
+        data: {
+          hearts: nextMaxHearts,
+        },
+      });
+    }
+
     return {
       hearts: {
         maxHearts: updated.heartsMaxHearts,
@@ -707,12 +756,11 @@ export class GamificationAdminService {
       }),
     ]);
 
+    const normalizedHearts = hearts ? await getUserHearts(userId) : null;
+
     return {
       user,
-      hearts: {
-        ...hearts,
-        nextRecoveryAt: hearts ? this.calculateNextRecoveryTime(hearts) : null,
-      },
+      hearts: hearts ? { ...hearts, ...normalizedHearts } : null,
       streak,
       collectedCharacters: characters,
       totalCharactersCollected: characters.length,
@@ -739,7 +787,10 @@ export class GamificationAdminService {
           where: { userId: user.userId },
           data: {
             hearts: maxHeartsToRestore,
-            lastHeartLossAt: null,
+            lastHeartLossAt:
+              maxHeartsToRestore >= configuredMaxHearts ? null : new Date(),
+            maxHearts: configuredMaxHearts,
+            recoveryTimeMs: config.hearts.recoveryTimeMs,
           },
         }),
       ),
@@ -818,7 +869,10 @@ export class GamificationAdminService {
     for (const user of usersWithExcessHearts) {
       await prisma.userHearts.update({
         where: { userId: user.userId },
-        data: { hearts: configuredMaxHearts },
+        data: {
+          hearts: configuredMaxHearts,
+          lastHeartLossAt: null,
+        },
       });
     }
 
@@ -832,22 +886,6 @@ export class GamificationAdminService {
     };
   }
 
-  /**
-   * Private helper to calculate next recovery time
-   */
-  private calculateNextRecoveryTime(userHearts: any) {
-    if (userHearts.hearts >= userHearts.maxHearts) {
-      return new Date(); // Already full
-    }
-
-    if (!userHearts.lastHeartLossAt) {
-      return new Date();
-    }
-
-    // Use the user's configured recovery time from the database
-    const recoveryTimeMs = userHearts.recoveryTimeMs || 3600000; // Default to 1 hour if not set
-    return new Date(userHearts.lastHeartLossAt.getTime() + recoveryTimeMs);
-  }
 }
 
 export const gamificationAdminService = new GamificationAdminService();

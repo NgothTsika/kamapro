@@ -1,9 +1,11 @@
 import { getRarityColor, storyTheme } from "@/components/ui/story-theme";
+import { useHeartsState } from "@/hooks/useHeartsState";
 import { getCharacterBySlug, type Character } from "@/lib";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -19,6 +21,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
+import { MaterialIcons } from "@expo/vector-icons";
 
 const HERO_HEIGHT = 430;
 
@@ -40,6 +43,10 @@ export default function CharacterDetailPage() {
   const [character, setCharacter] = useState<CharacterDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [blockedLessonTitle, setBlockedLessonTitle] = useState<string | null>(
+    null,
+  );
+  const { hearts, hasHearts } = useHeartsState();
   const scrollY = useSharedValue(0);
 
   useEffect(() => {
@@ -93,7 +100,15 @@ export default function CharacterDetailPage() {
   });
 
   const overlayHeaderStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, HERO_HEIGHT * 0.45], [0, 1]),
+    opacity: interpolate(scrollY.value, [0, HERO_HEIGHT * 0.42], [0, 1]),
+  }));
+
+  const headerTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      scrollY.value,
+      [HERO_HEIGHT * 0.18, HERO_HEIGHT * 0.42],
+      [0, 1],
+    ),
   }));
 
   const titleLiftStyle = useAnimatedStyle(() => ({
@@ -166,7 +181,7 @@ export default function CharacterDetailPage() {
   const heroHeight = HERO_HEIGHT + insets.top + 32;
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
       <View style={[styles.heroBackdrop, { height: heroHeight }]}>
         <Animated.Image
           source={character.imageUrl ? { uri: character.imageUrl } : undefined}
@@ -178,11 +193,13 @@ export default function CharacterDetailPage() {
 
       <View style={styles.topBar} pointerEvents="box-none">
         <Animated.View style={[styles.topBarGlass, overlayHeaderStyle]} />
-        <View style={styles.topBarContent}>
+        <View style={[styles.topBarContent, { paddingTop: insets.top + 10 }]}>
           <Pressable onPress={router.back} style={styles.topIcon}>
-            <Text style={styles.topIconText}>‹</Text>
+            <Text style={styles.topIconText}>
+              <MaterialIcons name="arrow-back-ios-new" size={18} />
+            </Text>
           </Pressable>
-          <Animated.Text style={[styles.topBarTitle, overlayHeaderStyle]}>
+          <Animated.Text style={[styles.topBarTitle, headerTitleStyle]}>
             {character.name}
           </Animated.Text>
           <View style={styles.topIconPlaceholder} />
@@ -228,7 +245,7 @@ export default function CharacterDetailPage() {
             </Text>
           </View>
 
-          {detailPairs.length > 0 ? (
+          {/* {detailPairs.length > 0 ? (
             <View style={styles.sectionCard}>
               <Text style={styles.sectionEyebrow}>Profile</Text>
               <Text style={styles.sectionTitle}>At a glance</Text>
@@ -257,9 +274,9 @@ export default function CharacterDetailPage() {
                 ))}
               </View>
             </View>
-          ) : null}
+          ) : null} */}
 
-          {achievements.length > 0 ? (
+          {/* {achievements.length > 0 ? (
             <View style={styles.sectionCard}>
               <Text style={styles.sectionEyebrow}>Achievements</Text>
               <Text style={styles.sectionTitle}>Legacy and impact</Text>
@@ -291,27 +308,33 @@ export default function CharacterDetailPage() {
                 ))}
               </View>
             </View>
-          ) : null}
+          ) : null} */}
 
           {sortedLessons.length > 0 ? (
             <View style={styles.sectionCard}>
               <Text style={styles.sectionEyebrow}>Stories</Text>
               <Text style={styles.sectionTitle}>
-                Lessons featuring this figure
+                Learn the incroyable stories of this legend
               </Text>
               <View style={styles.lessonList}>
                 {sortedLessons.map((lesson) => (
                   <Pressable
                     key={lesson.id}
-                    onPress={() => router.push(`/lesson/${lesson.slug}`)}
+                    onPress={() => {
+                      if (!hasHearts) {
+                        setBlockedLessonTitle(lesson.title);
+                        return;
+                      }
+                      router.push(`/lesson/${lesson.slug}`);
+                    }}
                     style={({ pressed }) => [
                       styles.lessonRow,
                       pressed && styles.pressed,
                     ]}
                   >
-                    <View style={styles.lessonIndex}>
+                    {/* <View style={styles.lessonIndex}>
                       <Text style={styles.lessonIndexText}>{lesson.order}</Text>
-                    </View>
+                    </View> */}
                     <View style={styles.lessonBody}>
                       <Text style={styles.lessonTitle}>{lesson.title}</Text>
                       {lesson.description ? (
@@ -328,6 +351,35 @@ export default function CharacterDetailPage() {
           ) : null}
         </View>
       </Animated.ScrollView>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={Boolean(blockedLessonTitle)}
+        onRequestClose={() => setBlockedLessonTitle(null)}
+      >
+        <View style={styles.modalScrim}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>No hearts left</Text>
+            <Text style={styles.modalCopy}>
+              {blockedLessonTitle
+                ? `You need at least one heart to open "${blockedLessonTitle}".`
+                : "You need at least one heart to open this lesson."}
+            </Text>
+            <Text style={styles.modalMeta}>
+              {hearts?.nextRecoveryAt
+                ? `Next heart: ${new Date(hearts.nextRecoveryAt).toLocaleTimeString()}`
+                : "Wait for recovery before starting the next lesson."}
+            </Text>
+            <Pressable
+              onPress={() => setBlockedLessonTitle(null)}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -343,7 +395,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     overflow: "hidden",
-    backgroundColor: storyTheme.plum,
+    backgroundColor: storyTheme.paper,
   },
   loadingScreen: {
     flex: 1,
@@ -351,6 +403,38 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
+  },
+  modalScrim: {
+    flex: 1,
+    backgroundColor: "rgba(18, 25, 34, 0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 28,
+    backgroundColor: storyTheme.white,
+    padding: 22,
+    gap: 10,
+  },
+  modalTitle: {
+    color: storyTheme.ink,
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  modalCopy: {
+    color: storyTheme.ink,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "600",
+  },
+  modalMeta: {
+    color: storyTheme.inkSoft,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "700",
   },
   topBar: {
     position: "absolute",
@@ -365,13 +449,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(246, 237, 220, 0.9)",
+    backgroundColor: storyTheme.paper,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.55)",
+    borderBottomColor: storyTheme.line,
   },
   topBarContent: {
     paddingHorizontal: 16,
-    paddingTop: 12,
     paddingBottom: 12,
     flexDirection: "row",
     alignItems: "center",
@@ -381,7 +464,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(38, 59, 94, 0.92)",
+    backgroundColor: storyTheme.navy,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -416,6 +499,7 @@ const styles = StyleSheet.create({
   },
   heroShade: {
     ...StyleSheet.absoluteFillObject,
+
     backgroundColor: "rgba(38, 4, 31, 0.34)",
   },
   heroFooter: {
@@ -455,15 +539,18 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   body: {
-    marginTop: -16,
-    gap: 16,
-    paddingBottom: 24,
+    marginTop: -26,
     backgroundColor: storyTheme.paper,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 20,
+    paddingBottom: 24,
+    gap: 20,
   },
   sectionCard: {
     marginHorizontal: 16,
     backgroundColor: storyTheme.paperSoft,
-    borderRadius: 28,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: storyTheme.line,
     padding: 20,

@@ -111,7 +111,13 @@ export type CharacterCollection = {
 export type HeartState = {
   hearts: number;
   maxHearts: number;
+  lastHeartLossAt?: string | null;
+  lastRecoveredAt?: string | null;
+  recoveryTimeMs?: number;
   nextRecoveryAt?: string | null;
+  willRecover?: boolean;
+  timeUntilNextHeartMs?: number;
+  isPremium?: boolean;
 };
 
 export type StreakState = {
@@ -169,6 +175,7 @@ export type LessonDetail = {
 };
 
 export type LessonChapter = {
+  steps: any;
   id: string;
   title: string;
   order: number;
@@ -591,12 +598,14 @@ export async function answerQuiz(
   heartsRemaining: number;
   completedAt: string | null;
   passed: boolean | null;
+  heartState?: HeartState;
 }> {
   return apiRequest<{
     attempt?: { isCorrect: boolean };
     heartsRemaining: number;
     completedAt: string | null;
     passed: boolean | null;
+    heartState?: HeartState;
   }>(`/quiz/sessions/${sessionId}/answer`, {
     method: "POST",
     token,

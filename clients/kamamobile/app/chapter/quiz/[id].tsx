@@ -394,7 +394,11 @@ export default function ChapterQuizPage() {
           ) : null}
 
           <View
-            style={[styles.options, isTrueFalse && styles.optionsTrueFalse]}
+            style={[
+              styles.options,
+              isTrueFalse && styles.optionsTrueFalse,
+              isImageChoice && styles.optionsImageGrid,
+            ]}
           >
             {currentQuiz.options.map((option, index) => (
               <Pressable
@@ -674,6 +678,12 @@ const styles = StyleSheet.create({
   optionsTrueFalse: {
     flexDirection: "row",
   },
+  optionsImageGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   optionCard: {
     backgroundColor: storyTheme.white,
     borderRadius: 22,
@@ -689,6 +699,7 @@ const styles = StyleSheet.create({
   },
   optionCardImageChoice: {
     padding: 12,
+    width: "48%",
   },
   optionCardSelected: {
     borderColor: storyTheme.navy,
@@ -713,7 +724,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   imageFrame: {
-    height: 180,
+    height: 136,
     borderRadius: 5,
     backgroundColor: "#e8decf",
     borderWidth: 1,

@@ -1,4 +1,21 @@
+import { MaterialIcons } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  ImageBackground,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { storyTheme } from "@/components/ui/story-theme";
+import { useRewardedHeartRecovery } from "@/hooks/useRewardedHeartRecovery";
 import { useTabBarScroll } from "@/hooks/useTabBarScroll";
 import { useAuth } from "@/lib/auth/auth-context";
 import {
@@ -6,69 +23,218 @@ import {
   getCharacterCollections,
   getCharacters,
   getDashboard,
+  getInProgressLessons,
+  getLessons,
   type Character,
   type CharacterCollection,
+  type DashboardData,
+  type LessonProgressDetail,
+  type LessonSummary,
 } from "@/lib";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  ImageBackground,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-type HomeCard =
-  | { type: "spotlight"; character: Character }
-  | { type: "collection"; collection: CharacterCollection }
-  | { type: "legend"; character: Character }
-  | { type: "empty" };
+type ActiveModal = "hearts" | "streak" | null;
 
-function StatPill({ label, value }: { label: string; value: number }) {
+function truncateDisplayName(name?: string | null, limit: number = 16) {
+  if (!name) {
+    return "Explorer";
+  }
+
+  return name.length > limit ? `${name.slice(0, limit - 1)}...` : name;
+}
+
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function formatDuration(ms?: number | null) {
+  if (!ms || ms <= 0) {
+    return "Ready now";
+  }
+
+  const totalMinutes = Math.ceil(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0 && minutes > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  return `${minutes}m`;
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  copy,
+}: {
+  eyebrow?: string;
+  title: string;
+  copy: string;
+}) {
   return (
-    <View style={styles.statPill}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={styles.sectionHeader}>
+      {eyebrow ? <Text style={styles.sectionEyebrow}>{eyebrow}</Text> : null}
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={styles.sectionCopy}>{copy}</Text>
     </View>
   );
 }
 
-function CharacterFeature({
-  title,
-  subtitle,
-  character,
+function HeaderMetricChip({
+  icon,
+  label,
+  value,
+  accent,
   onPress,
 }: {
-  title: string;
-  subtitle: string;
-  character: Character;
+  icon: keyof typeof MaterialIcons.glyphMap;
+  label: string;
+  value: string;
+  accent: string;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [pressed && styles.pressed]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.metricChip,
+        { borderColor: `${accent}55` },
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={[styles.metricIconWrap]}>
+        <MaterialIcons name={icon} size={16} color={accent} />
+        <Text style={styles.metricValue}>{value}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function LessonCard({
+  lesson,
+  label,
+  cta,
+  progressText,
+  onPress,
+}: {
+  lesson: {
+    title: string;
+    coverImage?: string | null;
+    description?: string | null;
+    xpReward?: number;
+  };
+  label: string;
+  cta: string;
+  progressText: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.lessonCard, pressed && styles.pressed]}
+    >
+      <ImageBackground
+        source={lesson.coverImage ? { uri: lesson.coverImage } : undefined}
+        style={styles.lessonCardHero}
+        imageStyle={styles.lessonCardImage}
+      >
+        <View style={styles.lessonShade} />
+        <View style={styles.lessonTopRow}>
+          <Text style={styles.lessonBadge}>{label}</Text>
+          <Text style={styles.lessonProgressText}>{progressText}</Text>
+        </View>
+      </ImageBackground>
+      <View style={styles.lessonBody}>
+        <Text style={styles.lessonTitle}>{lesson.title}</Text>
+        <Text style={styles.lessonDescription} numberOfLines={3}>
+          {lesson.description ||
+            "Jump back into a scene-driven lesson and keep your learning momentum alive."}
+        </Text>
+        <View style={styles.lessonMetaRow}>
+          <View style={styles.metaPill}>
+            <Text style={styles.metaPillText}>{lesson.xpReward ?? 0} XP</Text>
+          </View>
+          <Text style={styles.lessonCTA}>{cta}</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+function ContinueLessonRailCard({
+  lesson,
+  progressText,
+  onPress,
+}: {
+  lesson: LessonProgressDetail["lesson"];
+  progressText: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.continueCard, pressed && styles.pressed]}
+    >
+      <ImageBackground
+        source={lesson.coverImage ? { uri: lesson.coverImage } : undefined}
+        style={styles.continueCardHero}
+        imageStyle={styles.continueCardImage}
+      >
+        <View style={styles.continueCardShade} />
+        <Text style={styles.continueCardBadge}>In Progress</Text>
+      </ImageBackground>
+      <View style={styles.continueCardBody}>
+        <Text style={styles.continueCardTitle} numberOfLines={2}>
+          {lesson.title}
+        </Text>
+        <Text style={styles.continueCardMeta}>{progressText}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function LegendSpotlight({
+  character,
+  badge,
+  subtitle,
+  onPress,
+}: {
+  character: Character;
+  badge: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.spotlightCard, pressed && styles.pressed]}
+    >
       <ImageBackground
         source={character.imageUrl ? { uri: character.imageUrl } : undefined}
-        style={styles.featureCard}
-        imageStyle={styles.featureCardImage}
+        style={styles.spotlightImage}
+        imageStyle={styles.spotlightImageStyle}
       >
-        <View style={styles.featureShade} />
-        <View style={styles.featureBadge}>
-          <Text style={styles.featureBadgeText}>{title}</Text>
+        <View style={styles.spotlightShade} />
+        <View style={styles.spotlightBadge}>
+          <Text style={styles.spotlightBadgeText}>{badge}</Text>
         </View>
-        <View style={styles.featureFooter}>
-          <Text style={styles.featureTitle}>{character.name}</Text>
-          <Text style={styles.featureSubtitle}>{subtitle}</Text>
+        <View style={styles.spotlightFooter}>
+          <Text style={styles.spotlightTitle}>{character.name}</Text>
+          <Text style={styles.spotlightSubtitle}>{subtitle}</Text>
         </View>
       </ImageBackground>
     </Pressable>
   );
 }
 
-function CollectionPanel({
+function CollectionRail({
   collection,
   onCharacterPress,
 }: {
@@ -77,45 +243,153 @@ function CollectionPanel({
 }) {
   return (
     <View style={styles.collectionPanel}>
-      <View style={styles.collectionHeader}>
-        <Text style={styles.collectionEyebrow}>Collection</Text>
-        <Text style={styles.collectionTitle}>{collection.name}</Text>
-        {collection.description ? (
-          <Text style={styles.collectionCopy}>{collection.description}</Text>
-        ) : null}
-      </View>
-
-      {collection.characters && collection.characters.length > 0 ? (
-        <FlatList
-          data={collection.characters.slice(0, 6)}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.collectionCharacters}
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => onCharacterPress(item.slug)}
-              style={({ pressed }) => [styles.characterMiniCard, pressed && styles.pressed]}
+      <Text style={styles.collectionEyebrow}>Collection</Text>
+      <Text style={styles.collectionTitle}>{collection.name}</Text>
+      {collection.description ? (
+        <Text style={styles.collectionDescription}>
+          {collection.description}
+        </Text>
+      ) : null}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.collectionRail}
+      >
+        {(collection.characters ?? []).map((character) => (
+          <Pressable
+            key={character.id}
+            onPress={() => onCharacterPress(character.slug)}
+            style={({ pressed }) => [
+              styles.collectionLegendCard,
+              pressed && styles.pressed,
+            ]}
+          >
+            <ImageBackground
+              source={
+                character.imageUrl ? { uri: character.imageUrl } : undefined
+              }
+              style={styles.collectionLegendImage}
+              imageStyle={styles.collectionLegendImageStyle}
             >
-              <ImageBackground
-                source={item.imageUrl ? { uri: item.imageUrl } : undefined}
-                style={styles.characterMiniImage}
-                imageStyle={styles.characterMiniImageStyle}
-              >
-                <View style={styles.characterMiniShade} />
-              </ImageBackground>
-              <Text style={styles.characterMiniName} numberOfLines={1}>
-                {item.name}
-              </Text>
-            </Pressable>
-          )}
-        />
-      ) : (
-        <View style={styles.emptyInline}>
-          <Text style={styles.emptyInlineText}>No characters in this collection yet.</Text>
-        </View>
-      )}
+              <View style={styles.collectionLegendShade} />
+            </ImageBackground>
+            <Text style={styles.collectionLegendName} numberOfLines={1}>
+              {character.name}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
     </View>
+  );
+}
+
+function LegendLibraryCard({
+  character,
+  badge,
+  detail,
+  onPress,
+}: {
+  character: Character;
+  badge: string;
+  detail: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.libraryCard, pressed && styles.pressed]}
+    >
+      <ImageBackground
+        source={character.imageUrl ? { uri: character.imageUrl } : undefined}
+        style={styles.libraryImage}
+        imageStyle={styles.libraryImageStyle}
+      >
+        <View style={styles.libraryShade} />
+        <View style={styles.libraryBadge}>
+          <Text style={styles.libraryBadgeText}>{badge}</Text>
+        </View>
+      </ImageBackground>
+      <View style={styles.libraryBody}>
+        <Text style={styles.libraryTitle}>{character.name}</Text>
+        <Text style={styles.libraryDetail} numberOfLines={3}>
+          {detail}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function BrowseLegendsCard({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.browseLegendsCard,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={styles.browseLegendsIcon}>
+        <MaterialIcons name="auto-stories" size={24} color={storyTheme.white} />
+      </View>
+      <View style={styles.browseLegendsBody}>
+        <Text style={styles.browseLegendsTitle}>Browse all legends</Text>
+        <Text style={styles.browseLegendsCopy}>
+          Open the full character archive on its own page instead of loading
+          every legend directly on home.
+        </Text>
+      </View>
+      <MaterialIcons
+        name="arrow-forward-ios"
+        size={16}
+        color={storyTheme.white}
+      />
+    </Pressable>
+  );
+}
+
+function MetricModal({
+  visible,
+  title,
+  subtitle,
+  icon,
+  accent,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+  accent: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalBackdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.modalCard}>
+          <View style={styles.modalHandle} />
+          <View style={styles.modalHeader}>
+            <View
+              style={[styles.modalIconWrap, { backgroundColor: `${accent}18` }]}
+            >
+              <MaterialIcons name={icon} size={22} color={accent} />
+            </View>
+            <View style={styles.modalHeading}>
+              <Text style={styles.modalTitle}>{title}</Text>
+              <Text style={styles.modalSubtitle}>{subtitle}</Text>
+            </View>
+          </View>
+          {children}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -123,57 +397,79 @@ export default function HomeScreen() {
   const router = useRouter();
   const { onScroll } = useTabBarScroll();
   const { token, user } = useAuth();
-  const [hearts, setHearts] = useState(0);
-  const [streak, setStreak] = useState(0);
+  const {
+    error: rewardedHeartError,
+    isAdReady,
+    isLoadingAd,
+    isClaimingHeart,
+    restoreOneHeartWithAd,
+  } = useRewardedHeartRecovery();
+
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [collections, setCollections] = useState<CharacterCollection[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [lessons, setLessons] = useState<LessonSummary[]>([]);
+  const [inProgressLessons, setInProgressLessons] = useState<
+    LessonProgressDetail[]
+  >([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
 
-  const load = useCallback(async () => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+  const load = useCallback(
+    async (isRefresh?: boolean) => {
+      if (!token) {
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
 
-    try {
-      setLoading(true);
-
-      try {
-        const dashboard = await getDashboard(token);
-        setHearts(dashboard.hearts.hearts);
-        setStreak(dashboard.streak.currentStreak);
-      } catch {
-        setHearts(0);
-        setStreak(0);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
 
       try {
-        const allCollections = await getCharacterCollections();
-        const sortedCollections = allCollections.sort((a, b) => a.order - b.order);
+        const [
+          nextDashboard,
+          collectionList,
+          allCharacters,
+          allLessons,
+          progressLessons,
+        ] = await Promise.all([
+          getDashboard(token).catch(() => null),
+          getCharacterCollections().catch(() => [] as CharacterCollection[]),
+          getCharacters().catch(() => [] as Character[]),
+          getLessons().catch(() => [] as LessonSummary[]),
+          getInProgressLessons(token).catch(() => [] as LessonProgressDetail[]),
+        ]);
+
         const hydratedCollections = await Promise.all(
-          sortedCollections.slice(0, 4).map(async (collection) => {
-            try {
-              return await getCharacterCollection(collection.id);
-            } catch {
-              return collection;
-            }
-          }),
+          [...collectionList]
+            .sort((a, b) => a.order - b.order)
+            .slice(0, 3)
+            .map(async (collection) => {
+              try {
+                return await getCharacterCollection(collection.id);
+              } catch {
+                return collection;
+              }
+            }),
         );
-        setCollections(hydratedCollections);
-      } catch {
-        setCollections([]);
-      }
 
-      try {
-        const allCharacters = await getCharacters();
+        setDashboard(nextDashboard);
+        setCollections(hydratedCollections);
         setCharacters(allCharacters);
-      } catch {
-        setCharacters([]);
+        setLessons(allLessons);
+        setInProgressLessons(progressLessons);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+    },
+    [token],
+  );
 
   useEffect(() => {
     void load();
@@ -181,143 +477,595 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(true);
     }, [load]),
   );
 
-  const cards = useMemo<HomeCard[]>(() => {
-    if (!characters.length && !collections.length) return [{ type: "empty" }];
+  const displayName = useMemo(
+    () => truncateDisplayName(user?.username ?? null),
+    [user?.username],
+  );
+  const hearts = dashboard?.hearts?.hearts ?? 0;
+  const maxHearts = dashboard?.hearts?.maxHearts ?? 5;
+  const streak = dashboard?.streak?.currentStreak ?? user?.streak ?? 0;
+  const xp = user?.xp ?? 0;
+  const unlockedProgress = dashboard?.characters ?? [];
+  const unlockedIds = useMemo(
+    () => new Set(unlockedProgress.map((item) => item.characterId)),
+    [unlockedProgress],
+  );
+  const unlockedCharacters = useMemo(
+    () => characters.filter((character) => unlockedIds.has(character.id)),
+    [characters, unlockedIds],
+  );
+  const lockedCharacters = useMemo(
+    () => characters.filter((character) => !unlockedIds.has(character.id)),
+    [characters, unlockedIds],
+  );
+  const nextUnlockCharacter = useMemo(
+    () =>
+      [...lockedCharacters]
+        .filter((character) => typeof character.xpThreshold === "number")
+        .sort((a, b) => (a.xpThreshold ?? 0) - (b.xpThreshold ?? 0))
+        .find((character) => (character.xpThreshold ?? 0) > xp) ??
+      lockedCharacters[0],
+    [lockedCharacters, xp],
+  );
+  const continueLesson = inProgressLessons[0] ?? null;
+  const fallbackLesson = lessons[0] ?? null;
+  const recommendedLessons = useMemo(
+    () =>
+      lessons
+        .filter((lesson) => lesson.id !== continueLesson?.lesson.id)
+        .slice(0, 3),
+    [continueLesson?.lesson.id, lessons],
+  );
+  const spotlightCharacter = useMemo(
+    () => unlockedCharacters[0] ?? characters[0] ?? null,
+    [characters, unlockedCharacters],
+  );
+  const risingCharacters = useMemo(
+    () =>
+      (nextUnlockCharacter
+        ? [
+            nextUnlockCharacter,
+            ...lockedCharacters.filter(
+              (item) => item.id !== nextUnlockCharacter.id,
+            ),
+          ]
+        : lockedCharacters
+      ).slice(0, 3),
+    [lockedCharacters, nextUnlockCharacter],
+  );
 
-    const nextCards: HomeCard[] = [];
-    if (characters[0]) nextCards.push({ type: "spotlight", character: characters[0] });
-    if (collections[0]) nextCards.push({ type: "collection", collection: collections[0] });
-    if (characters[1]) nextCards.push({ type: "legend", character: characters[1] });
-    if (collections[1]) nextCards.push({ type: "collection", collection: collections[1] });
-    if (collections[2]) nextCards.push({ type: "collection", collection: collections[2] });
-    return nextCards;
-  }, [characters, collections]);
+  const progressLabel = continueLesson
+    ? `Chapter ${continueLesson.chapter.order}`
+    : "Fresh story";
+  const heartStatusCopy = dashboard?.hearts?.isPremium
+    ? "Unlimited access is active."
+    : hearts >= maxHearts
+      ? "You are fully charged for your next session."
+      : dashboard?.hearts?.willRecover
+        ? `Next heart in ${formatDuration(dashboard.hearts.timeUntilNextHeartMs)}.`
+        : "You can restore a heart with a rewarded ad.";
+  const streakStatusCopy =
+    streak >= 7
+      ? "Legend momentum unlocked. Celebrate the streak and keep it alive today."
+      : streak >= 3
+        ? "You are building consistency. Keep going for your 7-day reward moment."
+        : "Start a rhythm with one lesson or quiz today.";
+  const totalLessonsCompleted = dashboard?.stats?.totalLessonsCompleted ?? 0;
+  const totalQuizzesCompleted = dashboard?.stats?.totalQuizzesCompleted ?? 0;
+  const totalXpEarned = dashboard?.stats?.totalXpEarned ?? xp;
 
-  const featuredCharacters = characters.slice(0, 5);
+  const handleRestoreHeart = useCallback(async () => {
+    try {
+      const updatedHearts = await restoreOneHeartWithAd();
+      setDashboard((current) =>
+        current
+          ? {
+              ...current,
+              hearts: updatedHearts,
+            }
+          : current,
+      );
+      Alert.alert("Heart restored", "You earned 1 more heart. Keep learning.");
+      setActiveModal(null);
+    } catch (error) {
+      Alert.alert(
+        "Ad unavailable",
+        error instanceof Error
+          ? error.message
+          : "We could not restore a heart right now.",
+      );
+    }
+  }, [restoreOneHeartWithAd]);
+
+  const handleProCTA = useCallback(() => {
+    Alert.alert(
+      "Kama Pro",
+      "Connect this button to your future subscription screen for unlimited hearts, extra streak protection, and premium learning perks.",
+    );
+  }, []);
 
   return (
     <SafeAreaView style={styles.screen}>
-      <FlatList
-        data={cards}
-        keyExtractor={(item, index) => `${item.type}-${index}`}
+      <ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={styles.content}
-        ListHeaderComponent={
-          <View style={styles.headerBlock}>
-            <View style={styles.heroPanel}>
-              <Text style={styles.heroEyebrow}>Home</Text>
-              <Text style={styles.heroTitle}>
-                Welcome back, {user?.username ?? "Explorer"}
-              </Text>
-              <Text style={styles.heroCopy}>
-                Follow legendary figures, continue your lesson journey, and keep your
-                streak alive one story at a time.
-              </Text>
-
-              <View style={styles.statsRow}>
-                <StatPill label="Hearts" value={hearts} />
-                <StatPill label="Streak" value={streak} />
-                <StatPill label="Legends" value={characters.length} />
-              </View>
-            </View>
-
-            {loading ? (
-              <View style={styles.loadingCard}>
-                <ActivityIndicator color={storyTheme.mint} />
-                <Text style={styles.loadingText}>Loading your world...</Text>
-              </View>
-            ) : null}
-
-            {featuredCharacters.length > 0 ? (
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Quick picks</Text>
-                <Text style={styles.sectionCopy}>
-                  The next legends and collections worth opening right now.
-                </Text>
-              </View>
-            ) : null}
-          </View>
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              void load(true);
+            }}
+            tintColor={storyTheme.mint}
+          />
         }
-        renderItem={({ item }) => {
-          if (item.type === "empty") {
-            return (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>No stories yet</Text>
-                <Text style={styles.emptyCopy}>
-                  Once your characters and collections load, they’ll appear here as
-                  cinematic cards.
-                </Text>
-              </View>
-            );
-          }
+        contentContainerStyle={styles.content}
+      >
+        <View style={styles.headerRow}>
+          <View style={styles.headerIdentity}>
+            <Text style={styles.headerEyebrow}>Welcome back</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              Hello, {displayName}
+            </Text>
+          </View>
 
-          if (item.type === "spotlight") {
-            return (
-              <CharacterFeature
-                title="Spotlight"
-                subtitle="A legend to meet next"
-                character={item.character}
-                onPress={() => router.push(`/character-detail?slug=${item.character.slug}`)}
-              />
-            );
-          }
-
-          if (item.type === "legend") {
-            return (
-              <CharacterFeature
-                title="Rising Legend"
-                subtitle="Fresh from the archive"
-                character={item.character}
-                onPress={() => router.push(`/character-detail?slug=${item.character.slug}`)}
-              />
-            );
-          }
-
-          return (
-            <CollectionPanel
-              collection={item.collection}
-              onCharacterPress={(slug) => router.push(`/character-detail?slug=${slug}`)}
+          <View style={styles.headerMetricsRow}>
+            <HeaderMetricChip
+              icon="favorite"
+              label="Hearts"
+              value={`${hearts}/${maxHearts}`}
+              accent="#ff6b6b"
+              onPress={() => setActiveModal("hearts")}
             />
-          );
-        }}
-        ListFooterComponent={
-          featuredCharacters.length > 0 ? (
-            <View style={styles.footerPanel}>
-              <Text style={styles.footerTitle}>Character Vault</Text>
-              <FlatList
-                data={featuredCharacters}
-                keyExtractor={(item) => item.id}
+            <HeaderMetricChip
+              icon="local-fire-department"
+              label="Streak"
+              value={`${streak}d`}
+              accent={storyTheme.mint}
+              onPress={() => setActiveModal("streak")}
+            />
+          </View>
+        </View>
+
+        <View style={styles.heroPanel}>
+          <View style={styles.heroIdentity}>
+            <Text style={styles.heroEyebrow}>Today on Kama</Text>
+            <Text style={styles.heroTitle}>
+              {continueLesson
+                ? "Your next lesson step is ready"
+                : "A story world is waiting for you"}
+            </Text>
+            <Text style={styles.heroCopy}>
+              {continueLesson
+                ? "Jump back into your active lesson, protect your streak, and unlock more legends as you go."
+                : "Start a lesson, build momentum, and shape a home page that responds to your activity."}
+            </Text>
+          </View>
+
+          <View style={styles.heroInsightRow}>
+            <View style={styles.insightPill}>
+              <MaterialIcons
+                name="menu-book"
+                size={16}
+                color={storyTheme.plum}
+              />
+              <Text style={styles.insightPillText}>
+                {continueLesson
+                  ? `Continue ${continueLesson.lesson.title}`
+                  : "Start a new story lesson today"}
+              </Text>
+            </View>
+            <View style={styles.insightPill}>
+              <MaterialIcons
+                name="workspace-premium"
+                size={16}
+                color={storyTheme.plum}
+              />
+              <Text style={styles.insightPillText}>
+                {nextUnlockCharacter
+                  ? `${nextUnlockCharacter.name} is your next legend path`
+                  : "Build XP to unlock more legends"}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {loading ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator color={storyTheme.mint} />
+            <Text style={styles.loadingText}>
+              Curating your personal learning world...
+            </Text>
+          </View>
+        ) : null}
+
+        {continueLesson || fallbackLesson ? (
+          <View style={styles.sectionBlock}>
+            <SectionHeader
+              eyebrow="Continue"
+              title={
+                continueLesson
+                  ? "Continue your lessons"
+                  : "Start your next journey"
+              }
+              copy={
+                continueLesson
+                  ? "Your lesson progress lives here so you can jump back in without searching."
+                  : "No lesson is in progress yet. Here is the strongest story to start with."
+              }
+            />
+            {inProgressLessons.length > 0 ? (
+              <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.vaultList}
-                renderItem={({ item }) => (
-                  <Pressable
-                    onPress={() => router.push(`/character-detail?slug=${item.slug}`)}
-                    style={({ pressed }) => [styles.vaultCard, pressed && styles.pressed]}
-                  >
-                    <ImageBackground
-                      source={item.imageUrl ? { uri: item.imageUrl } : undefined}
-                      style={styles.vaultImage}
-                      imageStyle={styles.vaultImageStyle}
-                    >
-                      <View style={styles.vaultShade} />
-                    </ImageBackground>
-                    <Text style={styles.vaultName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                  </Pressable>
-                )}
+                contentContainerStyle={styles.continueRail}
+              >
+                {inProgressLessons.slice(0, 6).map((item) => (
+                  <ContinueLessonRailCard
+                    key={item.id}
+                    lesson={item.lesson}
+                    progressText={`Chapter ${item.chapter.order}`}
+                    onPress={() => router.push(`/lesson/${item.lesson.slug}`)}
+                  />
+                ))}
+              </ScrollView>
+            ) : fallbackLesson ? (
+              <LessonCard
+                lesson={fallbackLesson}
+                label="Featured"
+                cta="Open Lesson"
+                progressText={progressLabel}
+                onPress={() => router.push(`/lesson/${fallbackLesson.slug}`)}
               />
+            ) : null}
+          </View>
+        ) : null}
+
+        {continueLesson ? (
+          <View style={styles.sectionBlock}>
+            <LessonCard
+              lesson={continueLesson.lesson}
+              label="Ready now"
+              cta="Resume Lesson"
+              progressText={progressLabel}
+              onPress={() =>
+                router.push(`/lesson/${continueLesson.lesson.slug}`)
+              }
+            />
+          </View>
+        ) : null}
+
+        {/* <View style={styles.sectionBlock}>
+          <SectionHeader
+            eyebrow="Momentum"
+            title="Your learning pulse"
+            copy="A quick read on energy, progress, and the next action most likely to keep you engaged."
+          />
+          <View style={styles.pulseGrid}>
+            <View style={styles.pulseCard}>
+              <Text style={styles.pulseValue}>{totalLessonsCompleted}</Text>
+              <Text style={styles.pulseLabel}>Lessons completed</Text>
             </View>
-          ) : null
-        }
-      />
+            <View style={styles.pulseCard}>
+              <Text style={styles.pulseValue}>{totalQuizzesCompleted}</Text>
+              <Text style={styles.pulseLabel}>Quizzes answered</Text>
+            </View>
+            <View style={styles.pulseCard}>
+              <Text style={styles.pulseValue}>{unlockedCharacters.length}</Text>
+              <Text style={styles.pulseLabel}>Legends collected</Text>
+            </View>
+            <View style={styles.pulseCard}>
+              <Text style={styles.pulseValue}>
+                {formatCompactNumber(totalXpEarned)}
+              </Text>
+              <Text style={styles.pulseLabel}>XP earned</Text>
+            </View>
+          </View>
+
+          <View style={styles.strategyCard}>
+            <Text style={styles.strategyTitle}>Best next move</Text>
+            <Text style={styles.strategyCopy}>
+              {hearts === 0
+                ? "Recover a heart, then finish one short lesson to save your streak."
+                : continueLesson
+                  ? `Resume ${continueLesson.lesson.title} for the easiest momentum win today.`
+                  : nextUnlockCharacter
+                    ? `Earn toward ${nextUnlockCharacter.name} by opening a high-XP lesson next.`
+                    : "Open any lesson to keep your progress curve climbing."}
+            </Text>
+          </View>
+        </View> */}
+
+        {spotlightCharacter ? (
+          <View style={styles.sectionBlock}>
+            <SectionHeader
+              eyebrow="For You"
+              title="Legend spotlight"
+              copy="A featured historical figure chosen from your unlocked progress and your likely next unlock."
+            />
+            <LegendSpotlight
+              character={spotlightCharacter}
+              badge={
+                unlockedIds.has(spotlightCharacter.id)
+                  ? "In your vault"
+                  : "Meet next"
+              }
+              subtitle={
+                unlockedIds.has(spotlightCharacter.id)
+                  ? "A legend you can revisit right now"
+                  : "A legend that matches your current momentum"
+              }
+              onPress={() =>
+                router.push(`/character-detail?slug=${spotlightCharacter.slug}`)
+              }
+            />
+          </View>
+        ) : null}
+
+        {risingCharacters.length > 0 ? (
+          <View style={styles.sectionBlock}>
+            <SectionHeader
+              eyebrow="Unlock Path"
+              title="Legends worth chasing next"
+              copy="These picks lean toward characters near your current XP range so the home page feels more personal."
+            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.risingRail}
+            >
+              {risingCharacters.map((character) => (
+                <LegendLibraryCard
+                  key={character.id}
+                  character={character}
+                  badge={
+                    typeof character.xpThreshold === "number"
+                      ? `${character.xpThreshold} XP`
+                      : "Discover"
+                  }
+                  detail={
+                    character.description ||
+                    character.story ||
+                    "Open this legend to explore the story, timeline, and lessons tied to them."
+                  }
+                  onPress={() =>
+                    router.push(`/character-detail?slug=${character.slug}`)
+                  }
+                />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {recommendedLessons.length > 0 ? (
+          <View style={styles.sectionBlock}>
+            <SectionHeader
+              eyebrow="Story Feed"
+              title="High-value lessons for today"
+              copy="A tighter row of lessons gives you more ways to continue without overwhelming the home page."
+            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.lessonRail}
+            >
+              {recommendedLessons.map((lesson) => (
+                <Pressable
+                  key={lesson.id}
+                  onPress={() => router.push(`/lesson/${lesson.slug}`)}
+                  style={({ pressed }) => [
+                    styles.storyFeedCard,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <ImageBackground
+                    source={
+                      lesson.coverImage ? { uri: lesson.coverImage } : undefined
+                    }
+                    style={styles.storyFeedHero}
+                    imageStyle={styles.storyFeedImage}
+                  >
+                    <View style={styles.storyFeedShade} />
+                  </ImageBackground>
+                  <View style={styles.storyFeedBody}>
+                    <Text style={styles.storyFeedTitle}>{lesson.title}</Text>
+                    <Text style={styles.storyFeedCopy} numberOfLines={3}>
+                      {lesson.hook ||
+                        lesson.description ||
+                        "A chaptered story lesson designed to keep your momentum steady."}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {collections.length > 0 ? (
+          <View style={styles.sectionBlock}>
+            <SectionHeader
+              eyebrow="Collections"
+              title="Curated worlds to explore"
+              copy="Collections help the home page feel editorial instead of just being a raw feed of every legend."
+            />
+            <View style={styles.collectionsStack}>
+              {collections.map((collection) => (
+                <CollectionRail
+                  key={collection.id}
+                  collection={collection}
+                  onCharacterPress={(slug) =>
+                    router.push(`/character-detail?slug=${slug}`)
+                  }
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.sectionBlock}>
+          <SectionHeader
+            eyebrow="Library"
+            title="Legends library"
+            copy="Use a dedicated page for the full character archive, while home stays focused on progress and discovery."
+          />
+          <BrowseLegendsCard onPress={() => router.push("/legends")} />
+        </View>
+      </ScrollView>
+
+      <MetricModal
+        visible={activeModal === "hearts"}
+        title={`${hearts}/${maxHearts} hearts`}
+        subtitle={heartStatusCopy}
+        icon="favorite"
+        accent="#ff6b6b"
+        onClose={() => setActiveModal(null)}
+      >
+        <View style={styles.modalBody}>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoCardTitle}>Heart status</Text>
+            <Text style={styles.infoCardCopy}>
+              {dashboard?.hearts?.isPremium
+                ? "Premium users skip the wait and keep learning without heart limits."
+                : hearts === 0
+                  ? "You are out of hearts. The fastest recovery path is a rewarded ad or waiting for the next refill."
+                  : hearts < maxHearts
+                    ? "You still have energy to learn, and you can top up when needed."
+                    : "You are fully stocked. This is a great time to chain a lesson and a quiz."}
+            </Text>
+          </View>
+
+          <View style={styles.modalStatsRow}>
+            <View style={styles.modalStat}>
+              <Text style={styles.modalStatValue}>
+                {formatDuration(dashboard?.hearts?.timeUntilNextHeartMs)}
+              </Text>
+              <Text style={styles.modalStatLabel}>Next refill</Text>
+            </View>
+            <View style={styles.modalStat}>
+              <Text style={styles.modalStatValue}>
+                {dashboard?.hearts?.isPremium
+                  ? "Unlimited"
+                  : `${maxHearts} max`}
+              </Text>
+              <Text style={styles.modalStatLabel}>Capacity</Text>
+            </View>
+          </View>
+
+          {!dashboard?.hearts?.isPremium ? (
+            <Pressable
+              onPress={() => {
+                void handleRestoreHeart();
+              }}
+              disabled={
+                !isAdReady ||
+                isLoadingAd ||
+                isClaimingHeart ||
+                hearts >= maxHearts
+              }
+              style={({ pressed }) => [
+                styles.primaryAction,
+                (!isAdReady ||
+                  isLoadingAd ||
+                  isClaimingHeart ||
+                  hearts >= maxHearts) &&
+                  styles.actionDisabled,
+                pressed && styles.primaryActionPressed,
+              ]}
+            >
+              <Text style={styles.primaryActionText}>
+                {isClaimingHeart
+                  ? "Restoring heart..."
+                  : isLoadingAd
+                    ? "Preparing ad..."
+                    : hearts >= maxHearts
+                      ? "Hearts already full"
+                      : "Watch ad for 1 heart"}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          <Pressable style={styles.secondaryAction} onPress={handleProCTA}>
+            <Text style={styles.secondaryActionText}>
+              Get unlimited hearts with Pro
+            </Text>
+          </Pressable>
+
+          {rewardedHeartError ? (
+            <Text style={styles.helperText}>{rewardedHeartError}</Text>
+          ) : null}
+        </View>
+      </MetricModal>
+
+      <MetricModal
+        visible={activeModal === "streak"}
+        title={`${streak} day streak`}
+        subtitle={streakStatusCopy}
+        icon="local-fire-department"
+        accent={storyTheme.mint}
+        onClose={() => setActiveModal(null)}
+      >
+        <View style={styles.modalBody}>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoCardTitle}>Retention plan</Text>
+            <Text style={styles.infoCardCopy}>
+              The strongest engagement loop here is a balanced one: celebrate
+              streaks, protect them with freezes, and reserve truly unlimited
+              hearts for Pro so progress still feels meaningful.
+            </Text>
+          </View>
+
+          <View style={styles.modalStatsRow}>
+            <View style={styles.modalStat}>
+              <Text style={styles.modalStatValue}>
+                {dashboard?.streak?.longestStreak ?? streak}
+              </Text>
+              <Text style={styles.modalStatLabel}>Best streak</Text>
+            </View>
+            <View style={styles.modalStat}>
+              <Text style={styles.modalStatValue}>
+                {dashboard?.streak?.freezesRemaining ?? 0}
+              </Text>
+              <Text style={styles.modalStatLabel}>Freezes</Text>
+            </View>
+          </View>
+
+          <View style={styles.milestoneCard}>
+            <Text style={styles.milestoneTitle}>Suggested streak rewards</Text>
+            <Text style={styles.milestoneCopy}>
+              Day 3: unlock a streak freeze.
+            </Text>
+            <Text style={styles.milestoneCopy}>
+              Day 7: celebrate with a full heart refill moment.
+            </Text>
+            <Text style={styles.milestoneCopy}>
+              Pro tier: always-on unlimited hearts.
+            </Text>
+          </View>
+
+          <Pressable
+            style={styles.primaryAction}
+            onPress={() => {
+              setActiveModal(null);
+              if (continueLesson) {
+                router.push(`/lesson/${continueLesson.lesson.slug}`);
+                return;
+              }
+
+              if (fallbackLesson) {
+                router.push(`/lesson/${fallbackLesson.slug}`);
+              }
+            }}
+          >
+            <Text style={styles.primaryActionText}>
+              Keep the streak alive today
+            </Text>
+          </Pressable>
+        </View>
+      </MetricModal>
     </SafeAreaView>
   );
 }
@@ -329,64 +1077,108 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 16,
-    paddingBottom: 36,
-    gap: 16,
-  },
-  headerBlock: {
-    gap: 16,
     paddingTop: 12,
-    paddingBottom: 4,
+    paddingBottom: 40,
+    gap: 18,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  headerIdentity: {
+    flex: 1,
+    gap: 4,
+  },
+  headerEyebrow: {
+    color: storyTheme.amber,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  headerTitle: {
+    color: storyTheme.ink,
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "900",
+  },
+  headerMetricsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   heroPanel: {
     backgroundColor: storyTheme.plum,
-    borderRadius: 28,
-    paddingHorizontal: 22,
-    paddingVertical: 24,
-    gap: 10,
+    borderRadius: 30,
+    padding: 22,
+    gap: 18,
+  },
+  heroIdentity: {
+    gap: 8,
   },
   heroEyebrow: {
-    color: "#f3d58f",
+    color: "#f5d78f",
     fontSize: 12,
     fontWeight: "900",
+    letterSpacing: 1.1,
     textTransform: "uppercase",
-    letterSpacing: 1.2,
   },
   heroTitle: {
     color: storyTheme.white,
-    fontSize: 31,
-    lineHeight: 37,
+    fontSize: 30,
+    lineHeight: 36,
     fontWeight: "900",
   },
   heroCopy: {
-    color: "#efe4f1",
+    color: "#f2e8f1",
     fontSize: 15,
-    lineHeight: 24,
+    lineHeight: 23,
     fontWeight: "600",
   },
-  statsRow: {
+  metricChip: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 6,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  statPill: {
+  metricIconWrap: {
+    width: 30,
+    height: 30,
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  metricCopy: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    marginLeft: 8,
   },
-  statValue: {
-    color: storyTheme.white,
-    fontSize: 22,
+  metricValue: {
+    color: storyTheme.ink,
+    fontSize: 15,
     fontWeight: "900",
   },
-  statLabel: {
-    color: "#eaddef",
-    fontSize: 11,
+  metricLabel: {
+    color: storyTheme.inkSoft,
+    fontSize: 10,
     fontWeight: "800",
     textTransform: "uppercase",
-    letterSpacing: 1,
-    marginTop: 2,
+    letterSpacing: 0.9,
+  },
+  heroInsightRow: {
+    gap: 10,
+  },
+  insightPill: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  insightPillText: {
+    flex: 1,
+    color: storyTheme.plum,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "800",
   },
   loadingCard: {
     backgroundColor: storyTheme.paperSoft,
@@ -401,14 +1193,25 @@ const styles = StyleSheet.create({
     color: storyTheme.inkSoft,
     fontSize: 14,
     fontWeight: "700",
+    textAlign: "center",
+  },
+  sectionBlock: {
+    gap: 14,
   },
   sectionHeader: {
-    gap: 4,
-    paddingTop: 4,
+    gap: 6,
+  },
+  sectionEyebrow: {
+    color: storyTheme.amber,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1.1,
   },
   sectionTitle: {
     color: storyTheme.ink,
-    fontSize: 23,
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: "900",
   },
   sectionCopy: {
@@ -417,50 +1220,282 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: "600",
   },
-  featureCard: {
-    height: 280,
+  lessonCard: {
+    backgroundColor: storyTheme.paperSoft,
     borderRadius: 28,
     overflow: "hidden",
-    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+  },
+  lessonCardHero: {
+    height: 206,
     padding: 16,
+    justifyContent: "space-between",
     backgroundColor: storyTheme.plumDark,
   },
-  featureCardImage: {
+  lessonCardImage: {
     resizeMode: "cover",
   },
-  featureShade: {
+  lessonShade: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(31, 5, 28, 0.34)",
+    backgroundColor: "rgba(26, 6, 23, 0.34)",
   },
-  featureBadge: {
-    alignSelf: "flex-start",
+  lessonTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+  lessonBadge: {
+    color: storyTheme.amber,
     backgroundColor: "rgba(255,255,255,0.92)",
-    borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
   },
-  featureBadgeText: {
+  lessonProgressText: {
+    color: storyTheme.white,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  lessonBody: {
+    padding: 18,
+    gap: 8,
+  },
+  lessonTitle: {
+    color: storyTheme.ink,
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "900",
+  },
+  lessonDescription: {
+    color: storyTheme.inkSoft,
+    fontSize: 14,
+    lineHeight: 23,
+    fontWeight: "600",
+  },
+  lessonMetaRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  metaPill: {
+    backgroundColor: "#fff4dd",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "#f5d7a5",
+  },
+  metaPillText: {
+    color: "#bf7430",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  lessonCTA: {
+    color: storyTheme.navy,
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  continueRail: {
+    gap: 14,
+    paddingRight: 8,
+  },
+  continueCard: {
+    width: 238,
+    backgroundColor: storyTheme.paperSoft,
+    borderRadius: 24,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+  },
+  continueCardHero: {
+    height: 132,
+    justifyContent: "flex-start",
+    padding: 12,
+    backgroundColor: storyTheme.plumDark,
+  },
+  continueCardImage: {
+    resizeMode: "cover",
+  },
+  continueCardShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(31, 5, 28, 0.28)",
+  },
+  continueCardBadge: {
+    alignSelf: "flex-start",
     color: storyTheme.amber,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
     fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
+  },
+  continueCardBody: {
+    padding: 14,
+    gap: 6,
+  },
+  continueCardTitle: {
+    color: storyTheme.ink,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "900",
+  },
+  continueCardMeta: {
+    color: storyTheme.inkSoft,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  pulseGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  pulseCard: {
+    width: "48%",
+    backgroundColor: storyTheme.paperSoft,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    gap: 4,
+  },
+  pulseValue: {
+    color: storyTheme.ink,
+    fontSize: 26,
+    fontWeight: "900",
+  },
+  pulseLabel: {
+    color: storyTheme.inkSoft,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  strategyCard: {
+    backgroundColor: "#fff8ea",
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#f2ddaf",
+    gap: 6,
+  },
+  strategyTitle: {
+    color: storyTheme.amber,
+    fontSize: 12,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 1,
   },
-  featureFooter: {
+  strategyCopy: {
+    color: storyTheme.ink,
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: "700",
+  },
+  spotlightCard: {
+    borderRadius: 28,
+    overflow: "hidden",
+    backgroundColor: storyTheme.plumDark,
+  },
+  spotlightImage: {
+    height: 300,
+    justifyContent: "space-between",
+    padding: 16,
+  },
+  spotlightImageStyle: {
+    resizeMode: "cover",
+  },
+  spotlightShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(31, 5, 28, 0.32)",
+  },
+  spotlightBadge: {
+    alignSelf: "flex-start",
     backgroundColor: storyTheme.paper,
-    borderRadius: 22,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  spotlightBadgeText: {
+    color: storyTheme.amber,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
+  },
+  spotlightFooter: {
+    backgroundColor: storyTheme.paper,
+    borderRadius: 24,
     padding: 16,
     gap: 4,
   },
-  featureTitle: {
+  spotlightTitle: {
     color: storyTheme.ink,
     fontSize: 24,
     fontWeight: "900",
   },
-  featureSubtitle: {
+  spotlightSubtitle: {
     color: storyTheme.inkSoft,
     fontSize: 14,
     fontWeight: "700",
+  },
+  risingRail: {
+    gap: 14,
+    paddingRight: 8,
+  },
+  lessonRail: {
+    gap: 14,
+    paddingRight: 8,
+  },
+  storyFeedCard: {
+    width: 254,
+    backgroundColor: storyTheme.paperSoft,
+    borderRadius: 26,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+  },
+  storyFeedHero: {
+    height: 150,
+    backgroundColor: storyTheme.plumDark,
+  },
+  storyFeedImage: {
+    resizeMode: "cover",
+  },
+  storyFeedShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(31, 5, 28, 0.22)",
+  },
+  storyFeedBody: {
+    padding: 16,
+    gap: 8,
+  },
+  storyFeedTitle: {
+    color: storyTheme.ink,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "900",
+  },
+  storyFeedCopy: {
+    color: storyTheme.inkSoft,
+    fontSize: 13,
+    lineHeight: 21,
+    fontWeight: "600",
+  },
+  collectionsStack: {
+    gap: 14,
   },
   collectionPanel: {
     backgroundColor: storyTheme.paperSoft,
@@ -469,119 +1504,291 @@ const styles = StyleSheet.create({
     borderColor: storyTheme.line,
     paddingVertical: 18,
   },
-  collectionHeader: {
-    paddingHorizontal: 18,
-    gap: 6,
-    marginBottom: 14,
-  },
   collectionEyebrow: {
     color: storyTheme.amber,
     fontSize: 11,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 1.1,
+    paddingHorizontal: 18,
   },
   collectionTitle: {
     color: storyTheme.ink,
     fontSize: 22,
-    lineHeight: 28,
+    fontWeight: "900",
+    paddingHorizontal: 18,
+    marginTop: 8,
+  },
+  collectionDescription: {
+    color: storyTheme.inkSoft,
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: "600",
+    paddingHorizontal: 18,
+    marginTop: 6,
+  },
+  collectionRail: {
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    gap: 12,
+  },
+  collectionLegendCard: {
+    width: 134,
+    gap: 10,
+  },
+  collectionLegendImage: {
+    height: 156,
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: storyTheme.plumDark,
+  },
+  collectionLegendImageStyle: {
+    resizeMode: "cover",
+  },
+  collectionLegendShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(31, 5, 28, 0.18)",
+  },
+  collectionLegendName: {
+    color: storyTheme.ink,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  libraryCard: {
+    width: 278,
+    backgroundColor: storyTheme.paperSoft,
+    borderRadius: 26,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+  },
+  libraryImage: {
+    height: 200,
+    justifyContent: "flex-start",
+    padding: 14,
+    backgroundColor: storyTheme.plumDark,
+  },
+  libraryImageStyle: {
+    resizeMode: "cover",
+  },
+  libraryShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(31, 5, 28, 0.22)",
+  },
+  libraryBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  libraryBadgeText: {
+    color: storyTheme.amber,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
+  },
+  libraryBody: {
+    padding: 16,
+    gap: 8,
+  },
+  libraryTitle: {
+    color: storyTheme.ink,
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: "900",
   },
-  collectionCopy: {
+  libraryDetail: {
     color: storyTheme.inkSoft,
     fontSize: 14,
     lineHeight: 22,
     fontWeight: "600",
   },
-  collectionCharacters: {
-    paddingHorizontal: 18,
-    gap: 12,
+  browseLegendsCard: {
+    backgroundColor: storyTheme.navy,
+    borderRadius: 26,
+    padding: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
   },
-  characterMiniCard: {
-    width: 132,
-    gap: 10,
+  browseLegendsIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  characterMiniImage: {
-    height: 150,
-    borderRadius: 22,
-    overflow: "hidden",
-    backgroundColor: storyTheme.plumDark,
+  browseLegendsBody: {
+    flex: 1,
+    gap: 4,
   },
-  characterMiniImageStyle: {
-    resizeMode: "cover",
-  },
-  characterMiniShade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(31, 5, 28, 0.22)",
-  },
-  characterMiniName: {
-    color: storyTheme.ink,
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  emptyInline: {
-    marginHorizontal: 18,
-    backgroundColor: storyTheme.blush,
-    borderRadius: 18,
-    padding: 16,
-  },
-  emptyInlineText: {
-    color: storyTheme.inkSoft,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  footerPanel: {
-    gap: 12,
-    paddingTop: 6,
-  },
-  footerTitle: {
-    color: storyTheme.ink,
-    fontSize: 22,
+  browseLegendsTitle: {
+    color: storyTheme.white,
+    fontSize: 20,
     fontWeight: "900",
   },
-  vaultList: {
-    gap: 12,
-  },
-  vaultCard: {
-    width: 122,
-    gap: 8,
-  },
-  vaultImage: {
-    height: 134,
-    borderRadius: 22,
-    overflow: "hidden",
-    backgroundColor: storyTheme.plumDark,
-  },
-  vaultImageStyle: {
-    resizeMode: "cover",
-  },
-  vaultShade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(31, 5, 28, 0.22)",
-  },
-  vaultName: {
-    color: storyTheme.ink,
+  browseLegendsCopy: {
+    color: "#d9e4f3",
     fontSize: 14,
-    fontWeight: "800",
+    lineHeight: 21,
+    fontWeight: "600",
   },
-  emptyState: {
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(17, 24, 39, 0.42)",
+    justifyContent: "flex-end",
+    padding: 16,
+  },
+  modalCard: {
+    backgroundColor: storyTheme.paper,
+    borderRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 20,
+    gap: 16,
+  },
+  modalHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "#dac7b3",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "center",
+  },
+  modalIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalHeading: {
+    flex: 1,
+    gap: 3,
+  },
+  modalTitle: {
+    color: storyTheme.ink,
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  modalSubtitle: {
+    color: storyTheme.inkSoft,
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: "600",
+  },
+  modalBody: {
+    gap: 14,
+  },
+  infoCard: {
     backgroundColor: storyTheme.paperSoft,
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: storyTheme.line,
-    padding: 20,
-    gap: 8,
+    padding: 16,
+    gap: 6,
   },
-  emptyTitle: {
+  infoCardTitle: {
+    color: storyTheme.ink,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  infoCardCopy: {
+    color: storyTheme.inkSoft,
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: "600",
+  },
+  modalStatsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalStat: {
+    flex: 1,
+    borderRadius: 20,
+    backgroundColor: "#fff8ea",
+    borderWidth: 1,
+    borderColor: "#f2ddaf",
+    padding: 16,
+    gap: 4,
+  },
+  modalStatValue: {
     color: storyTheme.ink,
     fontSize: 20,
     fontWeight: "900",
   },
-  emptyCopy: {
+  modalStatLabel: {
     color: storyTheme.inkSoft,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  primaryAction: {
+    backgroundColor: storyTheme.navy,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 15,
+    paddingHorizontal: 16,
+  },
+  primaryActionPressed: {
+    backgroundColor: storyTheme.navyPressed,
+  },
+  primaryActionText: {
+    color: storyTheme.white,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  secondaryAction: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+    backgroundColor: storyTheme.paperSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 15,
+    paddingHorizontal: 16,
+  },
+  secondaryActionText: {
+    color: storyTheme.ink,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  actionDisabled: {
+    opacity: 0.55,
+  },
+  helperText: {
+    color: storyTheme.inkSoft,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+  milestoneCard: {
+    backgroundColor: "#fff8ea",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#f2ddaf",
+    padding: 16,
+    gap: 6,
+  },
+  milestoneTitle: {
+    color: storyTheme.amber,
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
+  },
+  milestoneCopy: {
+    color: storyTheme.ink,
     fontSize: 14,
     lineHeight: 22,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   pressed: {
     opacity: 0.94,

@@ -15,7 +15,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { StepRenderer } from "./step-renderer";
+import { StepRenderer } from "@/components/chapter/StepRenderer";
 import { kama } from "../../lib/kama-api";
 import type { Chapter } from "../../lib/types";
 import { ChapterIntroStep } from "../../components/steps/ChapterIntroStep";

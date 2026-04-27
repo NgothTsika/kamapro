@@ -1,16 +1,14 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
-import type { ChapterStep } from "../../lib/types";
-
-// Import all step components
-import { TextStep } from "../../components/steps/TextStep";
-import { TextAudioStep } from "../../components/steps/TextAudioStep";
-import { ImageFullStep } from "../../components/steps/ImageFullStep";
-import { PollStep } from "../../components/steps/PollStep";
-import { ChoiceStep } from "../../components/steps/ChoiceStep";
-import { QuizStep } from "../../components/steps/QuizStep";
-import { RecapStep } from "../../components/steps/RecapStep";
-import { ContinueButtonStep } from "../../components/steps/ContinueButtonStep";
+import { StyleSheet, View } from "react-native";
+import type { ChapterStep } from "@/lib/types";
+import { ChoiceStep } from "@/components/steps/ChoiceStep";
+import { ContinueButtonStep } from "@/components/steps/ContinueButtonStep";
+import { ImageFullStep } from "@/components/steps/ImageFullStep";
+import { PollStep } from "@/components/steps/PollStep";
+import { QuizStep } from "@/components/steps/QuizStep";
+import { RecapStep } from "@/components/steps/RecapStep";
+import { TextAudioStep } from "@/components/steps/TextAudioStep";
+import { TextStep } from "@/components/steps/TextStep";
 
 interface Props {
   step: ChapterStep;
@@ -31,7 +29,6 @@ export function StepRenderer({
   useFixedFooter = false,
   onAudioStart,
   onAudioFinished,
-  mediaUrl,
 }: Props) {
   return (
     <View style={styles.stepContainer}>

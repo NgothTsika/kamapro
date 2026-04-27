@@ -7,10 +7,30 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
+import { useEffect } from "react";
 import "react-native-reanimated";
+import {
+  createRewardedAd,
+  getRewardedAdTestId,
+} from "@/lib/ads/google-mobile-ads";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    const testAdUnitId = getRewardedAdTestId();
+    if (!testAdUnitId) {
+      return;
+    }
+
+    const rewardedAd = createRewardedAd(testAdUnitId);
+    if (!rewardedAd) {
+      return;
+    }
+
+    rewardedAd.load();
+  }, []);
+
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <AuthProvider>

@@ -125,13 +125,39 @@ export type StreakState = {
   longestStreak?: number;
   lastCheckInDate?: string | null;
   freezeCount?: number;
+  lastActivityAt?: string | null;
+  streakStartedAt?: string | null;
+  isActive?: boolean;
+  daysUntilLoss?: number;
+  canFreezeStreak?: boolean;
+  freezesRemaining?: number;
+  streakFrozenUntil?: string | null;
+};
+
+export type DashboardCharacterProgress = {
+  characterId: string;
+  isUnlocked: boolean;
+  unlockedAt?: string | null;
+  isFavorite?: boolean;
+  collectionLevel?: number;
+};
+
+export type DashboardStats = {
+  currentStreak: number;
+  longestStreak: number;
+  totalCheckIns: number;
+  totalXpEarned: number;
+  totalLessonsCompleted: number;
+  totalQuizzesCompleted: number;
+  lastActivityAt?: string | null;
+  streakStartedAt?: string | null;
 };
 
 export type DashboardData = {
   hearts: HeartState;
   streak: StreakState;
-  characters: unknown[];
-  stats: unknown;
+  characters: DashboardCharacterProgress[];
+  stats: DashboardStats;
 };
 
 export type MatchSummary = {
@@ -490,6 +516,17 @@ export async function getHearts(token: string): Promise<HeartState> {
   const response = await apiRequest<ApiEnvelope<HeartState>>(
     "/gamification/hearts",
     {
+      token,
+    },
+  );
+  return response.data;
+}
+
+export async function restoreRewardedHeart(token: string): Promise<HeartState> {
+  const response = await apiRequest<ApiEnvelope<HeartState>>(
+    "/gamification/hearts/rewarded-restore",
+    {
+      method: "POST",
       token,
     },
   );

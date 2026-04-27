@@ -1,10 +1,12 @@
 import { getRarityColor, storyTheme } from "@/components/ui/story-theme";
 import { useHeartsState } from "@/hooks/useHeartsState";
+import { useRewardedHeartRecovery } from "@/hooks/useRewardedHeartRecovery";
 import { getCharacterBySlug, type Character } from "@/lib";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   StyleSheet,
@@ -36,6 +38,11 @@ interface CharacterDetail extends Character {
   }>;
 }
 
+type BlockedLesson = {
+  slug: string;
+  title: string;
+};
+
 export default function CharacterDetailPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -43,10 +50,15 @@ export default function CharacterDetailPage() {
   const [character, setCharacter] = useState<CharacterDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [blockedLessonTitle, setBlockedLessonTitle] = useState<string | null>(
-    null,
-  );
-  const { hearts, hasHearts } = useHeartsState();
+  const [blockedLesson, setBlockedLesson] = useState<BlockedLesson | null>(null);
+  const { hearts, hasHearts, setHearts } = useHeartsState();
+  const {
+    error: rewardedHeartError,
+    isAdReady,
+    isLoadingAd,
+    isClaimingHeart,
+    restoreOneHeartWithAd,
+  } = useRewardedHeartRecovery();
   const scrollY = useSharedValue(0);
 
   useEffect(() => {
@@ -119,6 +131,27 @@ export default function CharacterDetailPage() {
     ],
     opacity: interpolate(scrollY.value, [0, 220], [1, 0.2]),
   }));
+
+  async function handleRewardedHeartRestore() {
+    if (!blockedLesson) {
+      return;
+    }
+
+    try {
+      const updatedHearts = await restoreOneHeartWithAd();
+      setHearts(updatedHearts);
+      const nextLesson = blockedLesson;
+      setBlockedLesson(null);
+      router.push(`/lesson/${nextLesson.slug}`);
+    } catch (restoreError) {
+      Alert.alert(
+        "Heart not restored",
+        restoreError instanceof Error
+          ? restoreError.message
+          : "We couldn't restore your heart right now.",
+      );
+    }
+  }
 
   if (loading) {
     return (
@@ -322,7 +355,10 @@ export default function CharacterDetailPage() {
                     key={lesson.id}
                     onPress={() => {
                       if (!hasHearts) {
-                        setBlockedLessonTitle(lesson.title);
+                        setBlockedLesson({
+                          slug: lesson.slug,
+                          title: lesson.title,
+                        });
                         return;
                       }
                       router.push(`/lesson/${lesson.slug}`);
@@ -355,15 +391,15 @@ export default function CharacterDetailPage() {
       <Modal
         animationType="fade"
         transparent
-        visible={Boolean(blockedLessonTitle)}
-        onRequestClose={() => setBlockedLessonTitle(null)}
+        visible={Boolean(blockedLesson)}
+        onRequestClose={() => setBlockedLesson(null)}
       >
         <View style={styles.modalScrim}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>No hearts left</Text>
             <Text style={styles.modalCopy}>
-              {blockedLessonTitle
-                ? `You need at least one heart to open "${blockedLessonTitle}".`
+              {blockedLesson
+                ? `You need at least one heart to open "${blockedLesson.title}".`
                 : "You need at least one heart to open this lesson."}
             </Text>
             <Text style={styles.modalMeta}>
@@ -371,11 +407,37 @@ export default function CharacterDetailPage() {
                 ? `Next heart: ${new Date(hearts.nextRecoveryAt).toLocaleTimeString()}`
                 : "Wait for recovery before starting the next lesson."}
             </Text>
+            <Text style={styles.rewardCopy}>
+              Watch a rewarded video to restore 1 heart instantly.
+            </Text>
+            {rewardedHeartError ? (
+              <Text style={styles.rewardError}>{rewardedHeartError}</Text>
+            ) : null}
             <Pressable
-              onPress={() => setBlockedLessonTitle(null)}
-              style={styles.primaryButton}
+              onPress={() => {
+                void handleRewardedHeartRestore();
+              }}
+              disabled={!isAdReady || isLoadingAd || isClaimingHeart}
+              style={({ pressed }) => [
+                styles.rewardButton,
+                (!isAdReady || isLoadingAd || isClaimingHeart) &&
+                  styles.rewardButtonDisabled,
+                pressed && styles.pressed,
+              ]}
             >
-              <Text style={styles.primaryButtonText}>Close</Text>
+              {isLoadingAd || isClaimingHeart ? (
+                <ActivityIndicator color={storyTheme.white} />
+              ) : (
+                <Text style={styles.rewardButtonText}>
+                  {isAdReady ? "Watch Ad For 1 Heart" : "Loading Reward Ad..."}
+                </Text>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={() => setBlockedLesson(null)}
+              style={styles.secondaryButton}
+            >
+              <Text style={styles.secondaryButtonText}>Close</Text>
             </Pressable>
           </View>
         </View>
@@ -435,6 +497,49 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     fontWeight: "700",
+  },
+  rewardCopy: {
+    color: storyTheme.ink,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  rewardError: {
+    color: "#B42318",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  rewardButton: {
+    minHeight: 52,
+    borderRadius: 18,
+    backgroundColor: storyTheme.navy,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  rewardButtonDisabled: {
+    opacity: 0.6,
+  },
+  rewardButtonText: {
+    color: storyTheme.white,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  secondaryButton: {
+    minHeight: 48,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  secondaryButtonText: {
+    color: storyTheme.ink,
+    fontSize: 15,
+    fontWeight: "800",
   },
   topBar: {
     position: "absolute",

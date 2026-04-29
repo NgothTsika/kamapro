@@ -3128,3 +3128,218 @@ contentAdminRouter.delete(
     res.status(204).send();
   }),
 );
+
+// ---------- Roadmap Levels ----------
+contentAdminRouter.get(
+  "/admin/roadmap-levels",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (_req, res) => {
+    const levels = await prisma.roadmapLevel.findMany({
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      include: {
+        lessons: {
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+          include: {
+            lesson: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                coverImage: true,
+                xpReward: true,
+                published: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      levels: levels.map((level) => ({
+        id: level.id,
+        title: level.title,
+        description: level.description,
+        symbol: level.symbol,
+        color: level.color,
+        order: level.order,
+        isPublished: level.isPublished,
+        lessonCount: level.lessons.length,
+        createdAt: level.createdAt,
+        updatedAt: level.updatedAt,
+        lessons: level.lessons.map((item) => ({
+          ...item.lesson,
+          roadmapItemId: item.id,
+          order: item.order,
+        })),
+      })),
+    });
+  }),
+);
+
+contentAdminRouter.post(
+  "/admin/roadmap-levels",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const bodySchema = z.object({
+      title: z.string().min(1).max(200),
+      description: z.string().max(1000).optional().nullable(),
+      symbol: z.string().max(80).optional().nullable(),
+      color: z.string().max(40).optional().nullable(),
+      order: z.number().int().optional(),
+      isPublished: z.boolean().optional(),
+      lessonIds: z.array(z.string().min(1)).default([]),
+    });
+    const body = bodySchema.parse(req.body);
+
+    if (body.lessonIds.length > 0) {
+      const lessons = await prisma.lesson.findMany({
+        where: { id: { in: body.lessonIds } },
+        select: { id: true },
+      });
+      if (lessons.length !== new Set(body.lessonIds).size) {
+        throw new HttpError(400, "Some lesson IDs do not exist");
+      }
+    }
+
+    const level = await prisma.roadmapLevel.create({
+      data: {
+        title: body.title.trim(),
+        description: body.description?.trim(),
+        symbol: body.symbol?.trim(),
+        color: body.color?.trim(),
+        order: body.order ?? 0,
+        isPublished: body.isPublished ?? true,
+      },
+    });
+
+    const lessonIds = [...new Set(body.lessonIds)];
+    if (lessonIds.length > 0) {
+      await prisma.roadmapLevelLesson.createMany({
+        data: lessonIds.map((lessonId, index) => ({
+          levelId: level.id,
+          lessonId,
+          order: index,
+        })),
+      });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "create_roadmap_level",
+        entityType: "roadmap_level",
+        entityId: level.id,
+        changes: jsonChanges({ title: level.title, lessonCount: lessonIds.length }),
+      },
+    });
+
+    res.status(201).json({ level: { ...level, lessonCount: lessonIds.length } });
+  }),
+);
+
+contentAdminRouter.patch(
+  "/admin/roadmap-levels/:levelId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ levelId: z.string().min(1) });
+    const { levelId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      title: z.string().min(1).max(200).optional(),
+      description: z.string().max(1000).optional().nullable(),
+      symbol: z.string().max(80).optional().nullable(),
+      color: z.string().max(40).optional().nullable(),
+      order: z.number().int().optional(),
+      isPublished: z.boolean().optional(),
+      lessonIds: z.array(z.string().min(1)).optional(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const existing = await prisma.roadmapLevel.findUnique({
+      where: { id: levelId },
+    });
+    if (!existing) throw new HttpError(404, "Roadmap level not found");
+
+    const lessonIds =
+      body.lessonIds !== undefined ? [...new Set(body.lessonIds)] : undefined;
+    if (lessonIds && lessonIds.length > 0) {
+      const lessons = await prisma.lesson.findMany({
+        where: { id: { in: lessonIds } },
+        select: { id: true },
+      });
+      if (lessons.length !== lessonIds.length) {
+        throw new HttpError(400, "Some lesson IDs do not exist");
+      }
+    }
+
+    const level = await prisma.roadmapLevel.update({
+      where: { id: levelId },
+      data: {
+        title: body.title?.trim(),
+        description:
+          body.description === undefined ? undefined : body.description?.trim(),
+        symbol: body.symbol === undefined ? undefined : body.symbol?.trim(),
+        color: body.color === undefined ? undefined : body.color?.trim(),
+        order: body.order,
+        isPublished: body.isPublished,
+      },
+    });
+
+    if (lessonIds !== undefined) {
+      await prisma.roadmapLevelLesson.deleteMany({ where: { levelId } });
+      if (lessonIds.length > 0) {
+        await prisma.roadmapLevelLesson.createMany({
+          data: lessonIds.map((lessonId, index) => ({
+            levelId,
+            lessonId,
+            order: index,
+          })),
+        });
+      }
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "update_roadmap_level",
+        entityType: "roadmap_level",
+        entityId: levelId,
+        changes: jsonChanges({ ...body, lessonCount: lessonIds?.length }),
+      },
+    });
+
+    const lessonCount =
+      lessonIds?.length ??
+      (await prisma.roadmapLevelLesson.count({ where: { levelId } }));
+    res.status(200).json({ level: { ...level, lessonCount } });
+  }),
+);
+
+contentAdminRouter.delete(
+  "/admin/roadmap-levels/:levelId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ levelId: z.string().min(1) });
+    const { levelId } = paramsSchema.parse(req.params);
+    const existing = await prisma.roadmapLevel.findUnique({
+      where: { id: levelId },
+    });
+    if (!existing) throw new HttpError(404, "Roadmap level not found");
+
+    await prisma.roadmapLevel.delete({ where: { id: levelId } });
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "delete_roadmap_level",
+        entityType: "roadmap_level",
+        entityId: levelId,
+        changes: jsonChanges({ title: existing.title }),
+      },
+    });
+    res.status(204).send();
+  }),
+);

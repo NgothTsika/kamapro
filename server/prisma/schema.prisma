@@ -167,6 +167,7 @@ model Lesson {
   reports          ContentReport[]
   offlineContent   OfflineContent[]
   collectionItems  CollectionItem[]
+  roadmapItems     RoadmapLevelLesson[]
   relatedCharacters CharacterLesson? @relation("CharacterLessons")
   userProgress     UserProgress[]
   lessonFeedback   LessonFeedback[]
@@ -651,6 +652,38 @@ model CollectionItem {
   addedAt      DateTime   @default(now())
 
   @@unique([collectionId, lessonId])
+}
+
+model RoadmapLevel {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  symbol      String?
+  color       String?
+  order       Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lessons RoadmapLevelLesson[]
+
+  @@index([order])
+  @@index([isPublished])
+}
+
+model RoadmapLevelLesson {
+  id        String       @id @default(cuid())
+  levelId   String
+  level     RoadmapLevel @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  lessonId  String
+  lesson    Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  order     Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([levelId, lessonId])
+  @@index([levelId, order])
+  @@index([lessonId])
 }
 
 model Achievement {

@@ -23,7 +23,10 @@ export function LessonCelebration({
 
   useEffect(() => {
     scale.value = withRepeat(
-      withSequence(withTiming(1.08, { duration: 550 }), withTiming(1, { duration: 550 })),
+      withSequence(
+        withTiming(1.08, { duration: 550 }),
+        withTiming(1, { duration: 550 }),
+      ),
       3,
       false,
     );
@@ -34,14 +37,32 @@ export function LessonCelebration({
   }));
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0e0a06", padding: 24, justifyContent: "center" }}>
-      <Animated.View style={[{ alignSelf: "center", marginBottom: 24 }, badgeStyle]}>
+    <View style={{ flex: 1, padding: 24, justifyContent: "center" }}>
+      <Animated.View
+        style={[{ alignSelf: "center", marginBottom: 24 }, badgeStyle]}
+      >
         <Text style={{ fontSize: 72, textAlign: "center" }}>🛡️</Text>
       </Animated.View>
-      <Text style={{ color: "#f8d568", fontWeight: "800", fontSize: 28, textAlign: "center" }}>
+      <Text
+        style={{
+          color: "#f8d568",
+          fontWeight: "800",
+          fontSize: 28,
+          textAlign: "center",
+        }}
+      >
         Quest complete!
       </Text>
-      <Text style={{ color: "#d0c2b0", textAlign: "center", marginTop: 12, lineHeight: 22 }}>{lessonTitle}</Text>
+      <Text
+        style={{
+          color: "#d0c2b0",
+          textAlign: "center",
+          marginTop: 12,
+          lineHeight: 22,
+        }}
+      >
+        {lessonTitle}
+      </Text>
 
       <View
         style={{
@@ -62,7 +83,9 @@ export function LessonCelebration({
           }}
         >
           <Text style={{ color: "#d0c2b0", fontSize: 12 }}>XP earned</Text>
-          <Text style={{ color: "#f8d568", fontSize: 28, fontWeight: "800" }}>+{xpEarned}</Text>
+          <Text style={{ color: "#f8d568", fontSize: 28, fontWeight: "800" }}>
+            +{xpEarned}
+          </Text>
         </View>
         <View
           style={{
@@ -75,7 +98,9 @@ export function LessonCelebration({
           }}
         >
           <Text style={{ color: "#d0c2b0", fontSize: 12 }}>Streak</Text>
-          <Text style={{ color: "white", fontSize: 28, fontWeight: "800" }}>{streak} 🔥</Text>
+          <Text style={{ color: "white", fontSize: 28, fontWeight: "800" }}>
+            {streak} 🔥
+          </Text>
         </View>
       </View>
 
@@ -89,7 +114,9 @@ export function LessonCelebration({
           alignItems: "center",
         }}
       >
-        <Text style={{ color: "#1a1a1a", fontWeight: "800", fontSize: 16 }}>Continue</Text>
+        <Text style={{ color: "#1a1a1a", fontWeight: "800", fontSize: 16 }}>
+          Continue
+        </Text>
       </Pressable>
     </View>
   );

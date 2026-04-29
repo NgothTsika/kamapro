@@ -19,20 +19,16 @@ import { useRewardedHeartRecovery } from "@/hooks/useRewardedHeartRecovery";
 import { useTabBarScroll } from "@/hooks/useTabBarScroll";
 import { useAuth } from "@/lib/auth/auth-context";
 import {
-  getCharacterCollection,
-  getCharacterCollections,
-  getCharacters,
+  type Character,
   getDashboard,
   getInProgressLessons,
   getLessons,
-  type Character,
-  type CharacterCollection,
   type DashboardData,
   type LessonProgressDetail,
   type LessonSummary,
 } from "@/lib";
 
-type ActiveModal = "hearts" | "streak" | null;
+type ActiveModal = "hearts" | null;
 
 function truncateDisplayName(name?: string | null, limit: number = 16) {
   if (!name) {
@@ -40,13 +36,6 @@ function truncateDisplayName(name?: string | null, limit: number = 16) {
   }
 
   return name.length > limit ? `${name.slice(0, limit - 1)}...` : name;
-}
-
-function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat("en", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value);
 }
 
 function formatDuration(ms?: number | null) {
@@ -109,10 +98,10 @@ function HeaderMetricChip({
         pressed && styles.pressed,
       ]}
     >
-      <View style={[styles.metricIconWrap]}>
-        <MaterialIcons name={icon} size={16} color={accent} />
-        <Text style={styles.metricValue}>{value}</Text>
+      <View style={[styles.metricIconWrap, { borderColor: accent }]}>
+        <MaterialIcons name={icon} size={20} color={accent} />
       </View>
+      <Text style={styles.metricValue}>{value}</Text>
     </Pressable>
   );
 }
@@ -234,54 +223,7 @@ function LegendSpotlight({
   );
 }
 
-function CollectionRail({
-  collection,
-  onCharacterPress,
-}: {
-  collection: CharacterCollection;
-  onCharacterPress: (slug: string) => void;
-}) {
-  return (
-    <View style={styles.collectionPanel}>
-      <Text style={styles.collectionEyebrow}>Collection</Text>
-      <Text style={styles.collectionTitle}>{collection.name}</Text>
-      {collection.description ? (
-        <Text style={styles.collectionDescription}>
-          {collection.description}
-        </Text>
-      ) : null}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.collectionRail}
-      >
-        {(collection.characters ?? []).map((character) => (
-          <Pressable
-            key={character.id}
-            onPress={() => onCharacterPress(character.slug)}
-            style={({ pressed }) => [
-              styles.collectionLegendCard,
-              pressed && styles.pressed,
-            ]}
-          >
-            <ImageBackground
-              source={
-                character.imageUrl ? { uri: character.imageUrl } : undefined
-              }
-              style={styles.collectionLegendImage}
-              imageStyle={styles.collectionLegendImageStyle}
-            >
-              <View style={styles.collectionLegendShade} />
-            </ImageBackground>
-            <Text style={styles.collectionLegendName} numberOfLines={1}>
-              {character.name}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
+// Removed CollectionRail component - replaced with direct lesson display
 
 function LegendLibraryCard({
   character,
@@ -318,6 +260,9 @@ function LegendLibraryCard({
     </Pressable>
   );
 }
+
+// Commented out - will be replaced with new component
+// function LegendLibraryCard() { ... }
 
 function BrowseLegendsCard({ onPress }: { onPress: () => void }) {
   return (
@@ -368,12 +313,16 @@ function MetricModal({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="slide"
       onRequestClose={onClose}
     >
       <View style={styles.modalBackdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.modalCard}>
+        <ScrollView
+          scrollEnabled={false}
+          style={styles.modalCard}
+          contentContainerStyle={styles.modalContent}
+        >
           <View style={styles.modalHandle} />
           <View style={styles.modalHeader}>
             <View
@@ -387,7 +336,7 @@ function MetricModal({
             </View>
           </View>
           {children}
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -406,8 +355,6 @@ export default function HomeScreen() {
   } = useRewardedHeartRecovery();
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [collections, setCollections] = useState<CharacterCollection[]>([]);
-  const [characters, setCharacters] = useState<Character[]>([]);
   const [lessons, setLessons] = useState<LessonSummary[]>([]);
   const [inProgressLessons, setInProgressLessons] = useState<
     LessonProgressDetail[]
@@ -431,36 +378,13 @@ export default function HomeScreen() {
       }
 
       try {
-        const [
-          nextDashboard,
-          collectionList,
-          allCharacters,
-          allLessons,
-          progressLessons,
-        ] = await Promise.all([
+        const [nextDashboard, allLessons, progressLessons] = await Promise.all([
           getDashboard(token).catch(() => null),
-          getCharacterCollections().catch(() => [] as CharacterCollection[]),
-          getCharacters().catch(() => [] as Character[]),
           getLessons().catch(() => [] as LessonSummary[]),
           getInProgressLessons(token).catch(() => [] as LessonProgressDetail[]),
         ]);
 
-        const hydratedCollections = await Promise.all(
-          [...collectionList]
-            .sort((a, b) => a.order - b.order)
-            .slice(0, 3)
-            .map(async (collection) => {
-              try {
-                return await getCharacterCollection(collection.id);
-              } catch {
-                return collection;
-              }
-            }),
-        );
-
         setDashboard(nextDashboard);
-        setCollections(hydratedCollections);
-        setCharacters(allCharacters);
         setLessons(allLessons);
         setInProgressLessons(progressLessons);
       } finally {
@@ -488,29 +412,6 @@ export default function HomeScreen() {
   const hearts = dashboard?.hearts?.hearts ?? 0;
   const maxHearts = dashboard?.hearts?.maxHearts ?? 5;
   const streak = dashboard?.streak?.currentStreak ?? user?.streak ?? 0;
-  const xp = user?.xp ?? 0;
-  const unlockedProgress = dashboard?.characters ?? [];
-  const unlockedIds = useMemo(
-    () => new Set(unlockedProgress.map((item) => item.characterId)),
-    [unlockedProgress],
-  );
-  const unlockedCharacters = useMemo(
-    () => characters.filter((character) => unlockedIds.has(character.id)),
-    [characters, unlockedIds],
-  );
-  const lockedCharacters = useMemo(
-    () => characters.filter((character) => !unlockedIds.has(character.id)),
-    [characters, unlockedIds],
-  );
-  const nextUnlockCharacter = useMemo(
-    () =>
-      [...lockedCharacters]
-        .filter((character) => typeof character.xpThreshold === "number")
-        .sort((a, b) => (a.xpThreshold ?? 0) - (b.xpThreshold ?? 0))
-        .find((character) => (character.xpThreshold ?? 0) > xp) ??
-      lockedCharacters[0],
-    [lockedCharacters, xp],
-  );
   const continueLesson = inProgressLessons[0] ?? null;
   const fallbackLesson = lessons[0] ?? null;
   const recommendedLessons = useMemo(
@@ -520,24 +421,6 @@ export default function HomeScreen() {
         .slice(0, 3),
     [continueLesson?.lesson.id, lessons],
   );
-  const spotlightCharacter = useMemo(
-    () => unlockedCharacters[0] ?? characters[0] ?? null,
-    [characters, unlockedCharacters],
-  );
-  const risingCharacters = useMemo(
-    () =>
-      (nextUnlockCharacter
-        ? [
-            nextUnlockCharacter,
-            ...lockedCharacters.filter(
-              (item) => item.id !== nextUnlockCharacter.id,
-            ),
-          ]
-        : lockedCharacters
-      ).slice(0, 3),
-    [lockedCharacters, nextUnlockCharacter],
-  );
-
   const progressLabel = continueLesson
     ? `Chapter ${continueLesson.chapter.order}`
     : "Fresh story";
@@ -548,16 +431,6 @@ export default function HomeScreen() {
       : dashboard?.hearts?.willRecover
         ? `Next heart in ${formatDuration(dashboard.hearts.timeUntilNextHeartMs)}.`
         : "You can restore a heart with a rewarded ad.";
-  const streakStatusCopy =
-    streak >= 7
-      ? "Legend momentum unlocked. Celebrate the streak and keep it alive today."
-      : streak >= 3
-        ? "You are building consistency. Keep going for your 7-day reward moment."
-        : "Start a rhythm with one lesson or quiz today.";
-  const totalLessonsCompleted = dashboard?.stats?.totalLessonsCompleted ?? 0;
-  const totalQuizzesCompleted = dashboard?.stats?.totalQuizzesCompleted ?? 0;
-  const totalXpEarned = dashboard?.stats?.totalXpEarned ?? xp;
-
   const handleRestoreHeart = useCallback(async () => {
     try {
       const updatedHearts = await restoreOneHeartWithAd();
@@ -617,16 +490,16 @@ export default function HomeScreen() {
             <HeaderMetricChip
               icon="favorite"
               label="Hearts"
-              value={`${hearts}/${maxHearts}`}
+              value={`${hearts}`}
               accent="#ff6b6b"
               onPress={() => setActiveModal("hearts")}
             />
             <HeaderMetricChip
               icon="local-fire-department"
               label="Streak"
-              value={`${streak}d`}
-              accent={storyTheme.mint}
-              onPress={() => setActiveModal("streak")}
+              value=""
+              accent={streak > 0 ? storyTheme.mint : "#c0c0c0"}
+              onPress={() => router.push("/streak")}
             />
           </View>
         </View>
@@ -657,18 +530,6 @@ export default function HomeScreen() {
                 {continueLesson
                   ? `Continue ${continueLesson.lesson.title}`
                   : "Start a new story lesson today"}
-              </Text>
-            </View>
-            <View style={styles.insightPill}>
-              <MaterialIcons
-                name="workspace-premium"
-                size={16}
-                color={storyTheme.plum}
-              />
-              <Text style={styles.insightPillText}>
-                {nextUnlockCharacter
-                  ? `${nextUnlockCharacter.name} is your next legend path`
-                  : "Build XP to unlock more legends"}
               </Text>
             </View>
           </View>
@@ -739,108 +600,6 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {/* <View style={styles.sectionBlock}>
-          <SectionHeader
-            eyebrow="Momentum"
-            title="Your learning pulse"
-            copy="A quick read on energy, progress, and the next action most likely to keep you engaged."
-          />
-          <View style={styles.pulseGrid}>
-            <View style={styles.pulseCard}>
-              <Text style={styles.pulseValue}>{totalLessonsCompleted}</Text>
-              <Text style={styles.pulseLabel}>Lessons completed</Text>
-            </View>
-            <View style={styles.pulseCard}>
-              <Text style={styles.pulseValue}>{totalQuizzesCompleted}</Text>
-              <Text style={styles.pulseLabel}>Quizzes answered</Text>
-            </View>
-            <View style={styles.pulseCard}>
-              <Text style={styles.pulseValue}>{unlockedCharacters.length}</Text>
-              <Text style={styles.pulseLabel}>Legends collected</Text>
-            </View>
-            <View style={styles.pulseCard}>
-              <Text style={styles.pulseValue}>
-                {formatCompactNumber(totalXpEarned)}
-              </Text>
-              <Text style={styles.pulseLabel}>XP earned</Text>
-            </View>
-          </View>
-
-          <View style={styles.strategyCard}>
-            <Text style={styles.strategyTitle}>Best next move</Text>
-            <Text style={styles.strategyCopy}>
-              {hearts === 0
-                ? "Recover a heart, then finish one short lesson to save your streak."
-                : continueLesson
-                  ? `Resume ${continueLesson.lesson.title} for the easiest momentum win today.`
-                  : nextUnlockCharacter
-                    ? `Earn toward ${nextUnlockCharacter.name} by opening a high-XP lesson next.`
-                    : "Open any lesson to keep your progress curve climbing."}
-            </Text>
-          </View>
-        </View> */}
-
-        {spotlightCharacter ? (
-          <View style={styles.sectionBlock}>
-            <SectionHeader
-              eyebrow="For You"
-              title="Legend spotlight"
-              copy="A featured historical figure chosen from your unlocked progress and your likely next unlock."
-            />
-            <LegendSpotlight
-              character={spotlightCharacter}
-              badge={
-                unlockedIds.has(spotlightCharacter.id)
-                  ? "In your vault"
-                  : "Meet next"
-              }
-              subtitle={
-                unlockedIds.has(spotlightCharacter.id)
-                  ? "A legend you can revisit right now"
-                  : "A legend that matches your current momentum"
-              }
-              onPress={() =>
-                router.push(`/character-detail?slug=${spotlightCharacter.slug}`)
-              }
-            />
-          </View>
-        ) : null}
-
-        {risingCharacters.length > 0 ? (
-          <View style={styles.sectionBlock}>
-            <SectionHeader
-              eyebrow="Unlock Path"
-              title="Legends worth chasing next"
-              copy="These picks lean toward characters near your current XP range so the home page feels more personal."
-            />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.risingRail}
-            >
-              {risingCharacters.map((character) => (
-                <LegendLibraryCard
-                  key={character.id}
-                  character={character}
-                  badge={
-                    typeof character.xpThreshold === "number"
-                      ? `${character.xpThreshold} XP`
-                      : "Discover"
-                  }
-                  detail={
-                    character.description ||
-                    character.story ||
-                    "Open this legend to explore the story, timeline, and lessons tied to them."
-                  }
-                  onPress={() =>
-                    router.push(`/character-detail?slug=${character.slug}`)
-                  }
-                />
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-
         {recommendedLessons.length > 0 ? (
           <View style={styles.sectionBlock}>
             <SectionHeader
@@ -885,35 +644,49 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {collections.length > 0 ? (
+        {lessons.length > 0 ? (
           <View style={styles.sectionBlock}>
             <SectionHeader
-              eyebrow="Collections"
-              title="Curated worlds to explore"
-              copy="Collections help the home page feel editorial instead of just being a raw feed of every legend."
+              eyebrow="Library"
+              title="All lessons"
+              copy="Browse all available lessons and continue your learning journey."
             />
-            <View style={styles.collectionsStack}>
-              {collections.map((collection) => (
-                <CollectionRail
-                  key={collection.id}
-                  collection={collection}
-                  onCharacterPress={(slug) =>
-                    router.push(`/character-detail?slug=${slug}`)
-                  }
-                />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.lessonRail}
+            >
+              {lessons.map((lesson) => (
+                <Pressable
+                  key={lesson.id}
+                  onPress={() => router.push(`/lesson/${lesson.slug}`)}
+                  style={({ pressed }) => [
+                    styles.storyFeedCard,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <ImageBackground
+                    source={
+                      lesson.coverImage ? { uri: lesson.coverImage } : undefined
+                    }
+                    style={styles.storyFeedHero}
+                    imageStyle={styles.storyFeedImage}
+                  >
+                    <View style={styles.storyFeedShade} />
+                  </ImageBackground>
+                  <View style={styles.storyFeedBody}>
+                    <Text style={styles.storyFeedTitle}>{lesson.title}</Text>
+                    <Text style={styles.storyFeedCopy} numberOfLines={3}>
+                      {lesson.hook ||
+                        lesson.description ||
+                        "A chaptered story lesson designed to keep your momentum steady."}
+                    </Text>
+                  </View>
+                </Pressable>
               ))}
-            </View>
+            </ScrollView>
           </View>
         ) : null}
-
-        <View style={styles.sectionBlock}>
-          <SectionHeader
-            eyebrow="Library"
-            title="Legends library"
-            copy="Use a dedicated page for the full character archive, while home stays focused on progress and discovery."
-          />
-          <BrowseLegendsCard onPress={() => router.push("/legends")} />
-        </View>
       </ScrollView>
 
       <MetricModal
@@ -944,14 +717,6 @@ export default function HomeScreen() {
                 {formatDuration(dashboard?.hearts?.timeUntilNextHeartMs)}
               </Text>
               <Text style={styles.modalStatLabel}>Next refill</Text>
-            </View>
-            <View style={styles.modalStat}>
-              <Text style={styles.modalStatValue}>
-                {dashboard?.hearts?.isPremium
-                  ? "Unlimited"
-                  : `${maxHearts} max`}
-              </Text>
-              <Text style={styles.modalStatLabel}>Capacity</Text>
             </View>
           </View>
 
@@ -997,73 +762,6 @@ export default function HomeScreen() {
           {rewardedHeartError ? (
             <Text style={styles.helperText}>{rewardedHeartError}</Text>
           ) : null}
-        </View>
-      </MetricModal>
-
-      <MetricModal
-        visible={activeModal === "streak"}
-        title={`${streak} day streak`}
-        subtitle={streakStatusCopy}
-        icon="local-fire-department"
-        accent={storyTheme.mint}
-        onClose={() => setActiveModal(null)}
-      >
-        <View style={styles.modalBody}>
-          <View style={styles.infoCard}>
-            <Text style={styles.infoCardTitle}>Retention plan</Text>
-            <Text style={styles.infoCardCopy}>
-              The strongest engagement loop here is a balanced one: celebrate
-              streaks, protect them with freezes, and reserve truly unlimited
-              hearts for Pro so progress still feels meaningful.
-            </Text>
-          </View>
-
-          <View style={styles.modalStatsRow}>
-            <View style={styles.modalStat}>
-              <Text style={styles.modalStatValue}>
-                {dashboard?.streak?.longestStreak ?? streak}
-              </Text>
-              <Text style={styles.modalStatLabel}>Best streak</Text>
-            </View>
-            <View style={styles.modalStat}>
-              <Text style={styles.modalStatValue}>
-                {dashboard?.streak?.freezesRemaining ?? 0}
-              </Text>
-              <Text style={styles.modalStatLabel}>Freezes</Text>
-            </View>
-          </View>
-
-          <View style={styles.milestoneCard}>
-            <Text style={styles.milestoneTitle}>Suggested streak rewards</Text>
-            <Text style={styles.milestoneCopy}>
-              Day 3: unlock a streak freeze.
-            </Text>
-            <Text style={styles.milestoneCopy}>
-              Day 7: celebrate with a full heart refill moment.
-            </Text>
-            <Text style={styles.milestoneCopy}>
-              Pro tier: always-on unlimited hearts.
-            </Text>
-          </View>
-
-          <Pressable
-            style={styles.primaryAction}
-            onPress={() => {
-              setActiveModal(null);
-              if (continueLesson) {
-                router.push(`/lesson/${continueLesson.lesson.slug}`);
-                return;
-              }
-
-              if (fallbackLesson) {
-                router.push(`/lesson/${fallbackLesson.slug}`);
-              }
-            }}
-          >
-            <Text style={styles.primaryActionText}>
-              Keep the streak alive today
-            </Text>
-          </Pressable>
         </View>
       </MetricModal>
     </SafeAreaView>
@@ -1141,14 +839,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
   },
   metricIconWrap: {
-    width: 30,
-    height: 30,
+    width: 40,
+    height: 40,
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.04)",
   },
   metricCopy: {
     flex: 1,
@@ -1638,16 +1341,22 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(17, 24, 39, 0.42)",
+    backgroundColor: "rgba(17, 24, 39, 0.2)",
     justifyContent: "flex-end",
-    padding: 16,
+    padding: 0,
   },
   modalCard: {
     backgroundColor: storyTheme.paper,
-    borderRadius: 28,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     paddingHorizontal: 18,
     paddingTop: 12,
-    paddingBottom: 20,
+    paddingBottom: 28,
+    gap: 16,
+    width: "100%",
+    maxHeight: "70%",
+  },
+  modalContent: {
     gap: 16,
   },
   modalHandle: {

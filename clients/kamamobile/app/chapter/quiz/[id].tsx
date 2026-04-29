@@ -18,6 +18,7 @@ import type { Chapter } from "../../../lib/types";
 import { storyTheme } from "../../../components/ui/story-theme";
 import { useChapterProgress } from "../../../hooks/useChapterProgress";
 import { useHeartsState } from "../../../hooks/useHeartsState";
+import { useLessonEffects } from "../../../hooks/useLessonEffects";
 import {
   normalizeOptionImages,
   normalizeQuizType,
@@ -29,16 +30,21 @@ import {
   startQuizSession,
 } from "../../../lib/api";
 import { loadToken } from "../../../lib/auth/token-storage";
+import { AnimatedLessonProgressBar } from "../../../components/lesson/AnimatedLessonProgressBar";
+import { useLocale } from "@/lib/auth/locale-context";
 
 export default function ChapterQuizPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id, lessonId, lessonSlug, lessonTitle } = useLocalSearchParams<{
+  const { id, lessonId, lessonSlug, lessonTitle, mode } = useLocalSearchParams<{
     id: string;
     lessonId: string;
     lessonSlug?: string;
     lessonTitle?: string;
+    mode?: string;
   }>();
+  const replayMode = mode === "replay";
+  const { currentLanguage } = useLocale();
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
@@ -59,11 +65,12 @@ export default function ChapterQuizPage() {
     hasHearts,
   } = useHeartsState();
   const { lessonProgress } = useChapterProgress(id || "", lessonId || "");
+  const { playEffect } = useLessonEffects();
 
   useEffect(() => {
     if (!id) return;
     void fetchChapter(id);
-  }, [id]);
+  }, [currentLanguage, id]);
 
   useEffect(() => {
     if (!showHeartGate) return;
@@ -86,7 +93,7 @@ export default function ChapterQuizPage() {
   async function fetchChapter(chapterId: string) {
     try {
       setLoading(true);
-      const data = await kama.getChapter(chapterId);
+      const data = await kama.getChapter(chapterId, currentLanguage);
       setChapter(data.chapter);
     } catch (err) {
       console.error("Failed to load chapter quiz:", err);
@@ -150,22 +157,34 @@ export default function ChapterQuizPage() {
           lessonId: lessonId || chapter?.lessonId || "",
           lessonSlug,
           lessonTitle,
+          mode: replayMode ? "replay" : undefined,
         },
       });
       return;
     }
 
+    let xpEarned = 0;
     const token = await loadToken();
     if (token && lessonId) {
       try {
-        await completeLesson(token, lessonId);
+        const result = await completeLesson(token, lessonId);
+        xpEarned = result.xpEarned;
       } catch (err) {
         console.error("Failed to mark lesson complete:", err);
       }
     }
 
     if (lessonSlug) {
-      router.replace(`/lesson/${lessonSlug}`);
+      router.replace({
+        pathname: "/lesson/completed/[slug]",
+        params: {
+          slug: lessonSlug,
+          lessonId,
+          lessonTitle,
+          xpEarned: String(xpEarned),
+          firstChapterId: lessonProgress?.lesson.chapters?.[0]?.id,
+        },
+      });
     } else {
       router.back();
     }
@@ -176,6 +195,7 @@ export default function ChapterQuizPage() {
     lessonProgress?.lesson.chapters,
     lessonSlug,
     lessonTitle,
+    replayMode,
     router,
   ]);
 
@@ -217,6 +237,7 @@ export default function ChapterQuizPage() {
       }
 
       if (result.attempt?.isCorrect) {
+        await playEffect("success");
         setQuizFeedback({
           kind: "correct",
           message: currentQuiz.explanation || "Correct. You can move on.",
@@ -239,6 +260,7 @@ export default function ChapterQuizPage() {
         return;
       }
 
+      await playEffect("pause");
       setQuizFeedback({
         kind: "incorrect",
         message: "Not quite. Try again before moving to the next quiz.",
@@ -270,7 +292,7 @@ export default function ChapterQuizPage() {
 
   function leaveQuiz() {
     if (lessonSlug) {
-      router.back();
+      router.replace(`/lesson/${lessonSlug}`);
       return;
     }
 
@@ -347,14 +369,10 @@ export default function ChapterQuizPage() {
           <MaterialIcons name="close" size={18} color="#fff" />
         </Pressable>
         <View style={styles.progressShell}>
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${Math.max(progressRatio, 0.08) * 100}%` },
-              ]}
-            />
-          </View>
+          <AnimatedLessonProgressBar
+            value={Math.max(progressRatio, 0.08)}
+            height={12}
+          />
         </View>
         <View style={styles.heartsRow}>
           {Array.from({ length: maxHeartCount }).map((_, index) => (
@@ -418,6 +436,7 @@ export default function ChapterQuizPage() {
                     uri={optionImages[index] ?? undefined}
                     label={option}
                     selected={selectedOption === index}
+                    isCorrect={quizFeedback?.kind === "correct"}
                   />
                 ) : (
                   <Text
@@ -532,11 +551,16 @@ function ImageOptionCard({
   uri,
   label,
   selected,
+  isCorrect,
 }: {
   uri?: string;
   label: string;
   selected?: boolean;
+  isCorrect?: boolean;
 }) {
+  // Show label only if: selected (regardless of correct/incorrect), or all are correct
+  const shouldShowLabel = selected || isCorrect;
+
   return (
     <View style={styles.imageOptionBody}>
       <View style={[styles.imageFrame, selected && styles.imageFrameSelected]}>
@@ -550,14 +574,16 @@ function ImageOptionCard({
           <Text style={styles.imageFallbackLabel}>Image unavailable</Text>
         )}
       </View>
-      <View
-        style={[
-          styles.imageLabelWrap,
-          selected && styles.imageLabelWrapSelected,
-        ]}
-      >
-        <Text style={styles.imageOptionLabel}>{label}</Text>
-      </View>
+      {shouldShowLabel && (
+        <View
+          style={[
+            styles.imageLabelWrap,
+            selected && styles.imageLabelWrapSelected,
+          ]}
+        >
+          <Text style={styles.imageOptionLabel}>{label}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -721,35 +747,30 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   imageOptionBody: {
-    gap: 10,
+    gap: 8,
   },
   imageFrame: {
     height: 136,
-    borderRadius: 5,
+    borderRadius: 12,
     backgroundColor: "#e8decf",
-    borderWidth: 1,
-    borderColor: storyTheme.line,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
   imageFrameSelected: {
-    borderColor: storyTheme.navy,
+    backgroundColor: "#d4c5b5",
   },
   optionImage: {
     ...StyleSheet.absoluteFillObject,
   },
   imageLabelWrap: {
-    backgroundColor: storyTheme.white,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: storyTheme.line,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    alignItems: "center",
   },
   imageLabelWrapSelected: {
-    backgroundColor: "#eef4ff",
-    borderColor: storyTheme.navy,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   imageFallbackLabel: {
     color: storyTheme.inkSoft,
@@ -758,8 +779,8 @@ const styles = StyleSheet.create({
   },
   imageOptionLabel: {
     color: storyTheme.ink,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: "800",
     textAlign: "center",
   },

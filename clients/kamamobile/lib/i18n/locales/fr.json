@@ -1,0 +1,72 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "error": "Une erreur s'est produite",
+    "retry": "Réessayer",
+    "cancel": "Annuler",
+    "close": "Fermer"
+  },
+  "story": {
+    "chapter": "Chapitre",
+    "intro": "Introduction",
+    "lesson": "Leçon",
+    "continue": "Continuer",
+    "next": "Suivant",
+    "back": "Retour",
+    "complete": "Terminer",
+    "narratedStep": "Etape racontee",
+    "recap": "Recapitulatif",
+    "goToQuiz": "Aller au quiz",
+    "readyToContinue": "Pret a continuer ?",
+    "nextSceneWaiting": "La scene suivante vous attend.",
+    "nextBeatBody": "Avancez quand vous etes pret pour la suite de l'histoire.",
+    "autoContinuing": "Suite automatique"
+  },
+  "quiz": {
+    "question": "Question",
+    "check": "Vérifier",
+    "tryAgain": "Réessayer",
+    "correct": "Correct!",
+    "incorrect": "Réessayer",
+    "correctMessage": "Vous avez lu le moment exactement correctement.",
+    "incorrectMessage": "L'histoire a une réponse plus nette qui vous attend.",
+    "deepDive": "Plongée Profonde",
+    "trueOrFalse": "Vrai ou Faux",
+    "multipleChoice": "Choix Multiples",
+    "imageChoice": "Choix d'Image"
+  },
+  "audio": {
+    "play": "Lire",
+    "pause": "Pause",
+    "reading": "Lecture...",
+    "speed": "Vitesse",
+    "close": "Fermer le lecteur audio",
+    "playNarration": "Lire la narration",
+    "playChapterNarration": "Lire la narration du chapitre"
+  },
+  "settings": {
+    "language": "Langue",
+    "languageDescription": "Choisissez la langue de l'application pour les histoires, les chapitres et la narration.",
+    "audioSettings": "Paramètres Audio",
+    "sounds": "Sons",
+    "textToSpeech": "Synthèse Vocale",
+    "enabled": "Activé",
+    "disabled": "Désactivé",
+    "speechRate": "Vitesse de Parole",
+    "pitch": "Tonalité",
+    "autoPlayNarration": "Lecture automatique",
+    "autoPlayNarrationDescription": "Commencer la lecture de chaque scene des son ouverture.",
+    "narrationEnabled": "Lecture vocale",
+    "narrationEnabledDescription": "Utiliser la narration pour les paragraphes d'histoire quand l'audio est disponible.",
+    "voicedNarration": "Narration",
+    "voicedNarrationDescription": "Ajuster le volume de la narration.",
+    "narrationSpeed": "Vitesse de narration",
+    "narrationSpeedDescription": "Ajuster la vitesse de lecture.",
+    "soundEffects": "Effets sonores",
+    "soundEffectsDescription": "Ajuster le volume des effets sonores dans l'application.",
+    "backgroundMusic": "Musique de fond",
+    "backgroundMusicDescription": "Ajuster le volume des bandes-son de l'histoire.",
+    "profileSoundSummary": "Reglez la langue, la narration et l'audio de l'histoire au meme endroit.",
+    "openSoundSettings": "Ouvrir les parametres audio"
+  }
+}

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { View, Image, StyleSheet, ActivityIndicator } from "react-native";
+import { useTranslation } from "react-i18next";
 import {
   getParagraphs,
   StoryBadge,
@@ -23,6 +24,7 @@ export function ImageFullStep({
   showAction = true,
   showMedia = true,
 }: Props) {
+  const { t } = useTranslation();
   const [imageLoading, setImageLoading] = useState(true);
   const paragraphs = getParagraphs(content.description, content.body);
 
@@ -54,7 +56,7 @@ export function ImageFullStep({
       <StoryParagraphs paragraphs={paragraphs} />
       {showAction ? (
         <StoryPrimaryButton
-          label={content.buttonLabel ?? "Continue"}
+          label={content.buttonLabel ?? t("story.continue")}
           onPress={onComplete}
         />
       ) : null}

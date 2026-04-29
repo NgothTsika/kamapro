@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { useTranslation } from "react-i18next";
 import {
   getParagraphs,
   StoryBadge,
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function TextStep({ content, onComplete, showAction = true }: Props) {
+  const { t } = useTranslation();
   const paragraphs = getParagraphs(content.body, content.details);
 
   return (
@@ -33,7 +35,7 @@ export function TextStep({ content, onComplete, showAction = true }: Props) {
       ) : null}
       {showAction ? (
         <StoryPrimaryButton
-          label={content.buttonLabel ?? "Continue"}
+          label={content.buttonLabel ?? t("story.continue")}
           onPress={onComplete}
         />
       ) : null}

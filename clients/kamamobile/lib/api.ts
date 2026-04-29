@@ -108,6 +108,26 @@ export type CharacterCollection = {
   characters?: CharacterInCollection[] | null;
 };
 
+export type LessonInCollection = {
+  id: string;
+  slug: string;
+  title: string;
+  description?: string | null;
+  coverImage?: string | null;
+  xpReward?: number | null;
+};
+
+export type LessonCollection = {
+  id: string;
+  title: string;
+  description?: string | null;
+  coverImage?: string | null;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lessons?: LessonInCollection[] | null;
+};
+
 export type HeartState = {
   hearts: number;
   maxHearts: number;
@@ -435,6 +455,22 @@ export async function getCharacterCollection(
 ): Promise<CharacterCollection> {
   const response = await apiRequest<{ collection: CharacterCollection }>(
     `/content/character-collections/${collectionId}`,
+  );
+  return response.collection;
+}
+
+export async function getLessonCollections(): Promise<LessonCollection[]> {
+  const response = await apiRequest<{ collections: LessonCollection[] }>(
+    "/content/lesson-collections",
+  );
+  return response.collections;
+}
+
+export async function getLessonCollection(
+  collectionId: string,
+): Promise<LessonCollection> {
+  const response = await apiRequest<{ collection: LessonCollection }>(
+    `/content/lesson-collections/${collectionId}`,
   );
   return response.collection;
 }

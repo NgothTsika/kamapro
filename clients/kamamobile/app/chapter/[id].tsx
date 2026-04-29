@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -10,23 +10,29 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
-import { ResizeMode, Video } from "expo-av";
+import { type AVPlaybackStatus, ResizeMode, Video } from "expo-av";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { StepRenderer } from "@/components/chapter/StepRenderer";
 import { kama } from "../../lib/kama-api";
-import type { Chapter } from "../../lib/types";
+import type { Chapter, ChapterStep } from "@/lib/types";
 import { ChapterIntroStep } from "../../components/steps/ChapterIntroStep";
 import { ContinueButtonStep } from "../../components/steps/ContinueButtonStep";
 import { storyTheme } from "../../components/ui/story-theme";
 import { useChapterProgress } from "../../hooks/useChapterProgress";
+import { useLessonEffects } from "../../hooks/useLessonEffects";
 import { completeLesson } from "../../lib/api";
 import { loadToken } from "../../lib/auth/token-storage";
+import { AnimatedLessonProgressBar } from "../../components/lesson/AnimatedLessonProgressBar";
+import Animated, { FadeInUp } from "react-native-reanimated";
+import { useLocale } from "@/lib/auth/locale-context";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { getParagraphs } from "@/components/steps/story-ui";
 
 const HERO_HEIGHT = 420;
-const AUTO_CONTINUE_SECONDS = 5;
+const AUTO_CONTINUE_SECONDS = 3;
 const NARRATIVE_FOOTER_STEP_TYPES = new Set([
   "TEXT",
   "TEXT_AUDIO",
@@ -35,21 +41,67 @@ const NARRATIVE_FOOTER_STEP_TYPES = new Set([
   "CONTINUE_BUTTON",
 ]);
 
+function getNarrationTextForStep(step: ChapterStep | null): string {
+  if (!step) return "";
+
+  const content = step.content ?? {};
+
+  switch (step.type) {
+    case "TEXT":
+    case "TEXT_AUDIO":
+      return [
+        content.title,
+        content.subtitle,
+        ...getParagraphs(content.body, content.details),
+        content.callout,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+    case "IMAGE_FULL":
+      return [
+        content.title,
+        content.subtitle,
+        ...getParagraphs(content.description, content.body),
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+    case "RECAP":
+      return [content.title, content.subtitle, ...(content.points ?? [])]
+        .filter(Boolean)
+        .join("\n\n");
+    case "CONTINUE_BUTTON":
+      return [content.title, content.subtitle, content.body]
+        .filter(Boolean)
+        .join("\n\n");
+    default:
+      return "";
+  }
+}
+
 export default function ChapterPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id, lessonId, lessonSlug, lessonTitle } = useLocalSearchParams<{
+  const { currentLanguage } = useLocale();
+  const { speak, stop, settings } = useAudioPlayer();
+  const { id, lessonId, lessonSlug, lessonTitle, mode } = useLocalSearchParams<{
     id: string;
     lessonId: string;
     lessonSlug?: string;
     lessonTitle?: string;
+    mode?: string;
   }>();
+  const replayMode = mode === "replay";
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [loading, setLoading] = useState(true);
   const [transitioning, setTransitioning] = useState(false);
   const [showPreviewScreen, setShowPreviewScreen] = useState(false);
   const [entryResolved, setEntryResolved] = useState(false);
   const [footerCountdown, setFooterCountdown] = useState<number | null>(null);
+  const [pausedAutoAdvance, setPausedAutoAdvance] = useState(false);
+  const [replayStepIndex, setReplayStepIndex] = useState(0);
+  const [isNarrationPlaying, setIsNarrationPlaying] = useState(false);
+  const [isHeroVideoPlaying, setIsHeroVideoPlaying] = useState(false);
+  const lastAutoNarrationKeyRef = useRef<string | null>(null);
   const {
     progress,
     lessonProgress,
@@ -58,19 +110,22 @@ export default function ChapterPage() {
     loading: progressLoading,
     reload,
   } = useChapterProgress(id || "", lessonId || "");
+  const { playEffect } = useLessonEffects();
 
   useEffect(() => {
     if (!id) return;
     setShowPreviewScreen(false);
     setEntryResolved(false);
     setFooterCountdown(null);
+    setPausedAutoAdvance(false);
+    setReplayStepIndex(0);
     void fetchChapter(id);
-  }, [id]);
+  }, [currentLanguage, id, replayMode]);
 
   async function fetchChapter(chapterId: string) {
     try {
       setLoading(true);
-      const data = await kama.getChapter(chapterId);
+      const data = await kama.getChapter(chapterId, currentLanguage);
       setChapter(data.chapter);
     } catch (err) {
       console.error("Failed to load chapter:", err);
@@ -81,21 +136,32 @@ export default function ChapterPage() {
 
   const totalSteps = chapter?.steps?.length || 0;
   const currentStepIndex = Math.min(
-    progress?.currentStepIndex || 0,
+    replayMode ? replayStepIndex : (progress?.currentStepIndex ?? 0),
     Math.max(totalSteps - 1, 0),
   );
   const currentStep = chapter?.steps?.[currentStepIndex] ?? null;
-  const hasSavedStepProgress = Boolean(progress && !progress.completed);
+  const hasSavedStepProgress = Boolean(progress && !progress.completed && !replayMode);
   const flowReady =
-    entryResolved || hasSavedStepProgress || Boolean(progress?.completed);
-  const isShowingPreview =
-    flowReady && !progress?.completed && showPreviewScreen;
-  const activeStep = flowReady && !isShowingPreview ? currentStep : null;
+    entryResolved || hasSavedStepProgress || Boolean(progress?.completed) || replayMode;
+  const isShowingPreview = flowReady && showPreviewScreen;
+  const activeStep =
+    flowReady && !isShowingPreview && (!progress?.completed || replayMode)
+      ? currentStep
+      : null;
   const usesNarrativeFooter =
     isShowingPreview ||
     Boolean(activeStep && NARRATIVE_FOOTER_STEP_TYPES.has(activeStep.type));
+  const mediaBlocksAutoAdvance = isNarrationPlaying || isHeroVideoPlaying;
   const progressRatio =
     totalSteps > 0 ? Math.min((currentStepIndex + 1) / totalSteps, 1) : 0;
+  const introNarrationText = useMemo(
+    () => getParagraphs(chapter?.introText).join("\n\n"),
+    [chapter?.introText],
+  );
+  const stepNarrationText = useMemo(
+    () => getNarrationTextForStep(activeStep),
+    [activeStep],
+  );
 
   const heroMedia = useMemo(() => {
     if (
@@ -118,14 +184,15 @@ export default function ChapterPage() {
     return null;
   }, [activeStep?.mediaType, activeStep?.mediaUrl, chapter?.coverImage]);
 
-  const goToQuizPage = useCallback(() => {
+  const goToQuizIntroPage = useCallback(() => {
     router.replace({
-      pathname: "/chapter/quiz/[id]",
+      pathname: "/chapter/quiz-intro/[id]",
       params: {
         id: id || chapter?.id || "",
         lessonId: lessonId || chapter?.lessonId || "",
         lessonSlug,
         lessonTitle,
+        mode: replayMode ? "replay" : undefined,
       },
     });
   }, [
@@ -135,6 +202,7 @@ export default function ChapterPage() {
     lessonId,
     lessonSlug,
     lessonTitle,
+    replayMode,
     router,
   ]);
 
@@ -152,22 +220,34 @@ export default function ChapterPage() {
           lessonId: lessonId || chapter?.lessonId || "",
           lessonSlug,
           lessonTitle,
+          mode: replayMode ? "replay" : undefined,
         },
       });
       return;
     }
 
+    let xpEarned = 0;
     const token = await loadToken();
     if (token && lessonId) {
       try {
-        await completeLesson(token, lessonId);
+        const result = await completeLesson(token, lessonId);
+        xpEarned = result.xpEarned;
       } catch (err) {
         console.error("Failed to mark lesson complete:", err);
       }
     }
 
     if (lessonSlug) {
-      router.replace(`/lesson/${lessonSlug}`);
+      router.replace({
+        pathname: "/lesson/completed/[slug]",
+        params: {
+          slug: lessonSlug,
+          lessonId,
+          lessonTitle,
+          xpEarned: String(xpEarned),
+          firstChapterId: lessonProgress?.lesson.chapters?.[0]?.id,
+        },
+      });
     } else {
       router.back();
     }
@@ -178,6 +258,7 @@ export default function ChapterPage() {
     lessonProgress?.lesson.chapters,
     lessonSlug,
     lessonTitle,
+    replayMode,
     router,
   ]);
 
@@ -201,19 +282,26 @@ export default function ChapterPage() {
     try {
       setTransitioning(true);
       setFooterCountdown(null);
+      await playEffect("continue");
 
       const isLastStep = currentStepIndex >= Math.max(totalSteps - 1, 0);
       if (isLastStep) {
-        await markChapterComplete();
+        if (!replayMode) {
+          await markChapterComplete();
+        }
         if ((chapter.quizzes?.length ?? 0) > 0) {
-          goToQuizPage();
+          goToQuizIntroPage();
         } else {
           await goToNextChapterOrFinish();
         }
         return;
       }
 
-      await advanceStep(currentStepIndex);
+      if (replayMode) {
+        setReplayStepIndex((value) => Math.min(value + 1, totalSteps - 1));
+      } else {
+        await advanceStep(currentStepIndex);
+      }
     } catch (err) {
       console.error("Failed to progress chapter:", err);
     } finally {
@@ -225,8 +313,10 @@ export default function ChapterPage() {
     chapter,
     currentStepIndex,
     goToNextChapterOrFinish,
-    goToQuizPage,
+    goToQuizIntroPage,
     markChapterComplete,
+    playEffect,
+    replayMode,
     totalSteps,
     transitioning,
   ]);
@@ -234,18 +324,27 @@ export default function ChapterPage() {
   const handlePrimaryFooterAction = useCallback(() => {
     if (transitioning || progressLoading) return;
 
+    stop();
+    setIsNarrationPlaying(false);
+
     if (isShowingPreview) {
       setShowPreviewScreen(false);
       return;
     }
 
     void handleStepComplete();
-  }, [handleStepComplete, isShowingPreview, progressLoading, transitioning]);
+  }, [
+    handleStepComplete,
+    isShowingPreview,
+    progressLoading,
+    stop,
+    transitioning,
+  ]);
 
   useEffect(() => {
     if (!chapter || progressLoading || entryResolved) return;
 
-    setShowPreviewScreen(!(hasSavedStepProgress || progress?.completed));
+    setShowPreviewScreen(!(hasSavedStepProgress || progress?.completed || replayMode));
     setEntryResolved(true);
   }, [
     chapter,
@@ -253,13 +352,14 @@ export default function ChapterPage() {
     hasSavedStepProgress,
     progress?.completed,
     progressLoading,
+    replayMode,
   ]);
 
   useEffect(() => {
-    if (!chapter || !flowReady || !progress?.completed) return;
+    if (!chapter || !flowReady || !progress?.completed || replayMode) return;
 
     if ((chapter.quizzes?.length ?? 0) > 0) {
-      goToQuizPage();
+      goToQuizIntroPage();
       return;
     }
 
@@ -268,17 +368,20 @@ export default function ChapterPage() {
     chapter,
     flowReady,
     goToNextChapterOrFinish,
-    goToQuizPage,
+    goToQuizIntroPage,
     progress?.completed,
+    replayMode,
   ]);
 
   useEffect(() => {
     if (!chapter || totalSteps !== 0) return;
 
     void (async () => {
-      await markChapterComplete();
+      if (!replayMode) {
+        await markChapterComplete();
+      }
       if ((chapter.quizzes?.length ?? 0) > 0) {
-        goToQuizPage();
+        goToQuizIntroPage();
       } else {
         await goToNextChapterOrFinish();
       }
@@ -286,9 +389,26 @@ export default function ChapterPage() {
   }, [
     chapter,
     goToNextChapterOrFinish,
-    goToQuizPage,
+    goToQuizIntroPage,
     markChapterComplete,
+    replayMode,
     totalSteps,
+  ]);
+
+  useEffect(() => {
+    if (!usesNarrativeFooter || progressLoading || !flowReady) return;
+    if (footerCountdown !== null || pausedAutoAdvance || mediaBlocksAutoAdvance) {
+      return;
+    }
+
+    setFooterCountdown(AUTO_CONTINUE_SECONDS);
+  }, [
+    flowReady,
+    footerCountdown,
+    mediaBlocksAutoAdvance,
+    pausedAutoAdvance,
+    progressLoading,
+    usesNarrativeFooter,
   ]);
 
   useEffect(() => {
@@ -296,7 +416,82 @@ export default function ChapterPage() {
   }, [activeStep?.id, id, isShowingPreview]);
 
   useEffect(() => {
-    if (!usesNarrativeFooter || footerCountdown === null) return;
+    stop();
+    setIsNarrationPlaying(false);
+    lastAutoNarrationKeyRef.current = null;
+  }, [activeStep?.id, isShowingPreview, stop]);
+
+  useEffect(() => {
+    setIsHeroVideoPlaying(heroMedia?.kind === "video");
+  }, [heroMedia?.kind, heroMedia?.uri]);
+
+  useEffect(() => {
+    if (!flowReady || pausedAutoAdvance || !settings.enabled || !settings.autoPlay) {
+      return;
+    }
+
+    const hasRecordedNarration =
+      (isShowingPreview && Boolean(chapter?.introAudioUrl)) ||
+      Boolean(
+        !isShowingPreview &&
+          activeStep?.type === "TEXT_AUDIO" &&
+          activeStep.mediaUrl,
+      );
+
+    if (hasRecordedNarration) {
+      return;
+    }
+
+    if (heroMedia?.kind === "video" && isHeroVideoPlaying) {
+      return;
+    }
+
+    const narrationText = isShowingPreview
+      ? introNarrationText
+      : stepNarrationText;
+    const narrationKey = isShowingPreview
+      ? `preview:${chapter?.id ?? id}`
+      : activeStep?.id ?? null;
+
+    if (!narrationText || !narrationKey) {
+      return;
+    }
+
+    if (lastAutoNarrationKeyRef.current === narrationKey) {
+      return;
+    }
+
+    lastAutoNarrationKeyRef.current = narrationKey;
+    setIsNarrationPlaying(true);
+    stopAutoContinueCountdown();
+
+    void speak(narrationText, () => {
+      setIsNarrationPlaying(false);
+      if (!pausedAutoAdvance) {
+        startAutoContinueCountdown();
+      }
+    });
+  }, [
+    activeStep?.id,
+    activeStep?.mediaUrl,
+    activeStep?.type,
+    chapter?.id,
+    chapter?.introAudioUrl,
+    flowReady,
+    heroMedia?.kind,
+    id,
+    introNarrationText,
+    isHeroVideoPlaying,
+    isShowingPreview,
+    pausedAutoAdvance,
+    settings.autoPlay,
+    settings.enabled,
+    speak,
+    stepNarrationText,
+  ]);
+
+  useEffect(() => {
+    if (!usesNarrativeFooter || footerCountdown === null || pausedAutoAdvance) return;
 
     if (footerCountdown === 0) {
       setFooterCountdown(null);
@@ -311,10 +506,11 @@ export default function ChapterPage() {
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [footerCountdown, handlePrimaryFooterAction, usesNarrativeFooter]);
+  }, [footerCountdown, handlePrimaryFooterAction, pausedAutoAdvance, usesNarrativeFooter]);
 
   function startAutoContinueCountdown() {
     if (!usesNarrativeFooter) return;
+    setPausedAutoAdvance(false);
     setFooterCountdown(AUTO_CONTINUE_SECONDS);
   }
 
@@ -322,11 +518,48 @@ export default function ChapterPage() {
     setFooterCountdown(null);
   }
 
-  function leaveChapter() {
-    if (lessonSlug) {
-      router.back();
+  function handleNarrationStart() {
+    setIsNarrationPlaying(true);
+    stopAutoContinueCountdown();
+  }
+
+  function handleNarrationEnd() {
+    setIsNarrationPlaying(false);
+    if (!pausedAutoAdvance) {
+      startAutoContinueCountdown();
+    }
+  }
+
+  function handleHeroPlaybackStatusUpdate(status: AVPlaybackStatus) {
+    if (!status.isLoaded) return;
+
+    const currentlyPlaying = Boolean(status.isPlaying) && !status.didJustFinish;
+    setIsHeroVideoPlaying(currentlyPlaying);
+
+    if (currentlyPlaying) {
+      stopAutoContinueCountdown();
       return;
     }
+
+    if (!pausedAutoAdvance) {
+      startAutoContinueCountdown();
+    }
+  }
+
+  function leaveChapter() {
+    stop();
+    if (!isShowingPreview && flowReady) {
+      stopAutoContinueCountdown();
+      setPausedAutoAdvance(true);
+      setShowPreviewScreen(true);
+      return;
+    }
+
+    if (lessonSlug) {
+      router.replace(`/lesson/${lessonSlug}`);
+      return;
+    }
+
     router.back();
   }
 
@@ -350,14 +583,7 @@ export default function ChapterPage() {
         <View style={styles.topIconPlaceholder} /> */}
         {!isShowingPreview && flowReady ? (
           <View style={styles.progressBlock}>
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${Math.max(progressRatio, 0.04) * 100}%` },
-                ]}
-              />
-            </View>
+            <AnimatedLessonProgressBar value={Math.max(progressRatio, 0.04)} height={12} />
           </View>
         ) : null}
         <View
@@ -368,8 +594,23 @@ export default function ChapterPage() {
             justifyContent: "center",
           }}
         >
-          <Pressable onPress={leaveChapter}>
-            <MaterialIcons name="volume-up" size={18} color="#fff" />
+          <Pressable
+            onPress={() => {
+              const nextPaused = !pausedAutoAdvance;
+              setPausedAutoAdvance(nextPaused);
+              if (nextPaused) {
+                stopAutoContinueCountdown();
+              } else {
+                startAutoContinueCountdown();
+              }
+              void playEffect("pause");
+            }}
+          >
+            <MaterialIcons
+              name={pausedAutoAdvance ? "play-arrow" : "pause"}
+              size={18}
+              color="#fff"
+            />
           </Pressable>
           <Pressable onPress={leaveChapter}>
             <MaterialIcons name="close" size={18} color="#fff" />
@@ -389,8 +630,11 @@ export default function ChapterPage() {
             <Video
               source={{ uri: heroMedia.uri }}
               style={styles.heroMedia}
+              shouldPlay
               useNativeControls
               resizeMode={ResizeMode.COVER}
+              volume={settings.backgroundMusicVolume}
+              onPlaybackStatusUpdate={handleHeroPlaybackStatusUpdate}
             />
           ) : heroMedia?.kind === "image" ? (
             <Image
@@ -421,13 +665,13 @@ export default function ChapterPage() {
                 }
                 introText={chapter.introText}
                 introAudioUrl={chapter.introAudioUrl}
-                onAudioStart={stopAutoContinueCountdown}
-                onAudioFinished={startAutoContinueCountdown}
+                onAudioStart={handleNarrationStart}
+                onAudioFinished={handleNarrationEnd}
               />
             ) : null}
 
             {activeStep ? (
-              <>
+              <Animated.View entering={FadeInUp.duration(320)}>
                 {/* <View style={styles.chapterMetaBlock}>
                   <Text
                     style={styles.sectionEyebrow}
@@ -445,10 +689,10 @@ export default function ChapterPage() {
                   chapterId={id || chapter.id}
                   onStepComplete={handleStepComplete}
                   useFixedFooter={usesNarrativeFooter}
-                  onAudioStart={stopAutoContinueCountdown}
-                  onAudioFinished={startAutoContinueCountdown}
+                  onAudioStart={handleNarrationStart}
+                  onAudioFinished={handleNarrationEnd}
                 />
-              </>
+              </Animated.View>
             ) : null}
           </View>
         </View>
@@ -472,9 +716,25 @@ export default function ChapterPage() {
             secondaryIconOnly
             onSecondaryPress={
               !isShowingPreview && activeStep
-                ? () => setShowPreviewScreen(true)
+                ? () => {
+                    stopAutoContinueCountdown();
+                    setPausedAutoAdvance(true);
+                    setShowPreviewScreen(true);
+                  }
                 : undefined
             }
+            tertiaryLabel={pausedAutoAdvance ? "Resume timer" : "Pause timer"}
+            tertiaryIconName={pausedAutoAdvance ? "play-arrow" : "pause"}
+            onTertiaryPress={() => {
+              const nextPaused = !pausedAutoAdvance;
+              setPausedAutoAdvance(nextPaused);
+              if (nextPaused) {
+                stopAutoContinueCountdown();
+              } else {
+                startAutoContinueCountdown();
+              }
+              void playEffect("pause");
+            }}
             countdownSeconds={footerCountdown}
             countdownLabel={
               isShowingPreview ? "Auto starting chapter" : "Auto continuing"
@@ -564,15 +824,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   progressTrack: {
-    height: 12,
-    borderRadius: 999,
-    backgroundColor: storyTheme.line,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: storyTheme.mint,
+    minWidth: 120,
   },
   progressText: {
     color: storyTheme.inkSoft,

@@ -1,6 +1,7 @@
 import { getLessonBySlug, type LessonFull } from "@/lib";
 import { useHeartsState } from "@/hooks/useHeartsState";
 import { kama } from "@/lib/kama-api";
+import { useLocale } from "@/lib/auth/locale-context";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -46,6 +47,7 @@ function getExcerpt(text?: string | null) {
 export default function LessonStoryScreen() {
   const insets = useSafeAreaInsets();
   const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { currentLanguage } = useLocale();
   const [lesson, setLesson] = useState<LessonFull | null>(null);
   const [currentChapterId, setCurrentChapterId] = useState<string | null>(null);
   const [completedChapterIds, setCompletedChapterIds] = useState<string[]>([]);
@@ -62,7 +64,7 @@ export default function LessonStoryScreen() {
       return;
     }
 
-    getLessonBySlug(slug)
+    getLessonBySlug(slug, currentLanguage)
       .then(async (result) => {
         setLesson(result);
 
@@ -89,7 +91,7 @@ export default function LessonStoryScreen() {
         }
       })
       .catch(() => setLesson(null));
-  }, [slug]);
+  }, [currentLanguage, slug]);
 
   const sortedChapters = useMemo(
     () => [...(lesson?.chapters ?? [])].sort((a, b) => a.order - b.order),
@@ -149,7 +151,10 @@ export default function LessonStoryScreen() {
     }
 
     const activeChapter =
-      sortedChapters.find((chapter) => chapter.id === currentChapterId) ||
+      (completedChapterIds.length === sortedChapters.length &&
+      sortedChapters.length > 0
+        ? sortedChapters[0]
+        : sortedChapters.find((chapter) => chapter.id === currentChapterId)) ||
       sortedChapters[0];
     if (!activeChapter) return;
 
@@ -160,6 +165,11 @@ export default function LessonStoryScreen() {
         lessonId: lesson.id,
         lessonSlug: lesson.slug,
         lessonTitle: lesson.title,
+        mode:
+          completedChapterIds.length === sortedChapters.length &&
+          sortedChapters.length > 0
+            ? "replay"
+            : undefined,
       },
     });
   };
@@ -300,6 +310,12 @@ export default function LessonStoryScreen() {
                     imageStyle={styles.chapterHeroImage}
                   >
                     <View style={styles.chapterHeroShade} />
+                    {!isAccessible ? (
+                      <View style={styles.chapterLockBadge}>
+                        <MaterialIcons name="lock" size={15} color="#ffffff" />
+                        <Text style={styles.chapterLockText}>Locked</Text>
+                      </View>
+                    ) : null}
                     {hasStarted ? (
                       <View style={styles.chapterMiniProgress}>
                         <View
@@ -349,7 +365,7 @@ export default function LessonStoryScreen() {
           <Text style={styles.primaryButtonText}>
             {completedChapterIds.length === sortedChapters.length &&
             sortedChapters.length > 0
-              ? "Story Complete"
+              ? "Restart Lesson"
               : completedChapterIds.length > 0
                 ? "Continue Story"
                 : "Start Lesson"}
@@ -600,6 +616,25 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: palette.mint,
     borderRadius: 999,
+  },
+  chapterLockBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(22, 16, 22, 0.72)",
+  },
+  chapterLockText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
   },
   chapterBody: {
     paddingHorizontal: 18,

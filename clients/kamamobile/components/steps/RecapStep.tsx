@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StoryPrimaryButton, StoryTitleBlock } from "./story-ui";
 
 interface Props {
@@ -13,10 +14,11 @@ export function RecapStep({
   onComplete,
   showAction = true,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <View style={styles.container}>
       <StoryTitleBlock
-        eyebrow={content.eyebrow ?? "Recap"}
+        eyebrow={content.eyebrow ?? t("story.recap")}
         title={content.title ?? "Witness to Tyranny"}
         subtitle={content.subtitle}
       />
@@ -38,7 +40,7 @@ export function RecapStep({
       </View>
       {showAction ? (
         <StoryPrimaryButton
-          label={content.buttonLabel ?? "Go to Quiz"}
+          label={content.buttonLabel ?? t("story.goToQuiz")}
           onPress={onComplete}
         />
       ) : null}

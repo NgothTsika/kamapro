@@ -5,6 +5,8 @@ import type {
   AdminCharacterDetail,
   AdminCharacterCollectionSummary,
   AdminCharacterCollectionDetail,
+  AdminLessonCollectionSummary,
+  AdminLessonCollectionDetail,
   AdminLessonDetail,
   AdminLessonSummary,
   AdminUser,
@@ -1720,6 +1722,77 @@ export async function deleteCharacterCollection(
       method: "DELETE",
     },
   );
+}
+
+export async function getLessonCollections(
+  token: string,
+): Promise<AdminLessonCollectionSummary[]> {
+  const data = await apiRequest<{
+    collections: AdminLessonCollectionSummary[];
+  }>("/content/admin/lesson-collections", { token });
+  return data.collections;
+}
+
+export async function getLessonCollection(
+  token: string,
+  collectionId: string,
+): Promise<AdminLessonCollectionDetail> {
+  const data = await apiRequest<{ collection: AdminLessonCollectionDetail }>(
+    `/content/admin/lesson-collections/${collectionId}`,
+    { token },
+  );
+  return data.collection;
+}
+
+export async function createLessonCollection(
+  token: string,
+  payload: {
+    title: string;
+    description?: string;
+    coverImage?: string;
+    isPublic?: boolean;
+    lessonIds: string[];
+  },
+): Promise<AdminLessonCollectionSummary> {
+  const data = await apiRequest<{
+    collection: AdminLessonCollectionSummary;
+  }>("/content/admin/lesson-collections", {
+    token,
+    method: "POST",
+    body: payload,
+  });
+  return data.collection;
+}
+
+export async function updateLessonCollection(
+  token: string,
+  collectionId: string,
+  payload: {
+    title?: string;
+    description?: string;
+    coverImage?: string;
+    isPublic?: boolean;
+    lessonIds?: string[];
+  },
+): Promise<AdminLessonCollectionSummary> {
+  const data = await apiRequest<{
+    collection: AdminLessonCollectionSummary;
+  }>(`/content/admin/lesson-collections/${collectionId}`, {
+    token,
+    method: "PATCH",
+    body: payload,
+  });
+  return data.collection;
+}
+
+export async function deleteLessonCollection(
+  token: string,
+  collectionId: string,
+): Promise<void> {
+  await apiRequest<void>(`/content/admin/lesson-collections/${collectionId}`, {
+    token,
+    method: "DELETE",
+  });
 }
 
 // ============================================================================

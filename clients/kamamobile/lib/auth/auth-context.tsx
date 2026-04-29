@@ -17,7 +17,9 @@ import React, {
 } from "react";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
+import { makeRedirectUri } from "expo-auth-session";
 import { Platform } from "react-native";
+import { useLocale } from "@/lib/auth/locale-context";
 
 // Google OAuth Client IDs
 const GOOGLE_CLIENT_IDS = {
@@ -41,7 +43,10 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+WebBrowser.maybeCompleteAuthSession();
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { currentLanguage } = useLocale();
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -53,18 +58,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ? GOOGLE_CLIENT_IDS.ios
       : Platform.OS === "android"
         ? GOOGLE_CLIENT_IDS.android
-        : GOOGLE_CLIENT_IDS.web;
+      : GOOGLE_CLIENT_IDS.web;
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  const redirectUri = makeRedirectUri({
+    scheme: "kamamobile",
+    path: "oauthredirect",
+  });
+
+  const [request, , promptAsync] = Google.useAuthRequest({
     clientId,
     iosClientId: GOOGLE_CLIENT_IDS.ios,
     androidClientId: GOOGLE_CLIENT_IDS.android,
     webClientId: GOOGLE_CLIENT_IDS.web,
+    redirectUri,
+    selectAccount: true,
   });
 
   // Warm up browser
   useEffect(() => {
-    WebBrowser.warmUpAsync();
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
   }, []);
 
   useEffect(() => {
@@ -91,7 +106,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signIn(email: string, password: string) {
     setIsLoading(true);
     try {
-      const response = await loginWithEmail({ email, password });
+      const response = await loginWithEmail({
+        email,
+        password,
+        language: currentLanguage,
+      });
       await saveToken(response.token);
       setToken(response.token);
       setUser(response.user);
@@ -104,7 +123,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signUp(username: string, email: string, password: string) {
     setIsLoading(true);
     try {
-      const response = await registerWithEmail({ username, email, password });
+      const response = await registerWithEmail({
+        username,
+        email,
+        password,
+        language: currentLanguage,
+      });
       await saveToken(response.token);
       setToken(response.token);
       setUser(response.user);
@@ -117,29 +141,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signInWithGoogle() {
     setIsLoading(true);
     try {
-      await promptAsync();
-      if (response?.type === "success" && response.authentication) {
-        const { idToken, accessToken } = response.authentication;
+      if (!request) {
+        throw new Error("Google sign in is still preparing. Please try again.");
+      }
+
+      const result = await promptAsync();
+      if (result.type === "success") {
+        const authentication =
+          "authentication" in result ? result.authentication : null;
+        const params = "params" in result ? result.params : {};
+        const idToken =
+          authentication?.idToken ??
+          (typeof params.id_token === "string" ? params.id_token : null);
+        const accessToken =
+          authentication?.accessToken ??
+          (typeof params.access_token === "string" ? params.access_token : null);
+
         if (!idToken || !accessToken) {
-          throw new Error("Failed to get authentication tokens from Google");
+          throw new Error("Failed to get authentication tokens from Google.");
         }
 
         const authResponse = await loginWithGoogle({
           idToken,
           accessToken,
+          language: currentLanguage,
         });
-
         await saveToken(authResponse.token);
         setToken(authResponse.token);
         setUser(authResponse.user);
         router.replace("/(tabs)/home");
-      } else if (response?.type === "error") {
+      } else if (result.type === "error") {
         throw new Error(
-          response.error?.message || "Google authentication failed",
+          result.error?.message || "Google authentication failed",
         );
+      } else if (result.type !== "dismiss" && result.type !== "cancel") {
+        throw new Error("Google authentication was interrupted.");
       }
-    } catch (error) {
-      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -178,7 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       refreshMe,
     }),
-    [user, token, isLoading, isBootstrapping],
+    [user, token, isLoading, isBootstrapping, currentLanguage],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

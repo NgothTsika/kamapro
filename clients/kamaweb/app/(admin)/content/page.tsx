@@ -50,7 +50,7 @@ const links = [
   },
   {
     title: "Collections",
-    description: "Create curated collections of characters for learning.",
+    description: "Create curated collections of lessons for learning.",
     href: "/content/collections",
     icon: Box,
   },

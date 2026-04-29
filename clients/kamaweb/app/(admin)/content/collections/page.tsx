@@ -43,45 +43,45 @@ import {
 } from "@/components/ui/card";
 import { getAdminToken } from "@/lib/admin-auth";
 import {
-  getCharacterCollections,
-  getCharacterCollection,
-  createCharacterCollection,
-  updateCharacterCollection,
-  deleteCharacterCollection,
-  getAdminCharacters,
+  getLessonCollections,
+  getLessonCollection,
+  createLessonCollection,
+  updateLessonCollection,
+  deleteLessonCollection,
+  getAdminLessons,
 } from "@/lib/kama-api";
-import type { AdminCharacter } from "@/lib/kama-types";
+import type { AdminLessonSummary } from "@/lib/kama-types";
 import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
 
 interface Collection {
   id: string;
-  name: string;
+  title: string;
   description?: string;
   coverImage?: string;
-  order: number;
-  characterCount: number;
+  isPublic: boolean;
+  itemCount: number;
   createdAt: string;
   updatedAt: string;
 }
 
 interface CollectionDetail extends Collection {
-  characters?: Array<{ id: string; name: string }>;
+  lessons?: Array<{ id: string; title: string }>;
 }
 
 const emptyForm = {
-  name: "",
+  title: "",
   description: "" as string | undefined,
   coverImage: undefined as string | undefined,
-  order: 0,
-  characterIds: [] as string[],
+  isPublic: true,
+  lessonIds: [] as string[],
 };
 
 export default function CollectionsPage() {
   const router = useRouter();
   const [rows, setRows] = useState<Collection[]>([]);
-  const [allCharacters, setAllCharacters] = useState<AdminCharacter[]>([]);
+  const [allLessons, setAllLessons] = useState<AdminLessonSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingCharacters, setLoadingCharacters] = useState(false);
+  const [loadingLessons, setLoadingLessons] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CollectionDetail | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -101,19 +101,17 @@ export default function CollectionsPage() {
     }
     try {
       setLoading(true);
-      setLoadingCharacters(true);
-      const collections = await getCharacterCollections(token);
-      const characters = await getAdminCharacters(token);
-      console.log("Collections loaded:", collections);
-      console.log("Characters loaded:", characters);
+      setLoadingLessons(true);
+      const collections = await getLessonCollections(token);
+      const lessons = await getAdminLessons(token, "all");
       setRows(collections);
-      setAllCharacters(characters);
+      setAllLessons(lessons);
     } catch (e) {
       console.error("Load error:", e);
       toast.error(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
-      setLoadingCharacters(false);
+      setLoadingLessons(false);
     }
   }, []);
 
@@ -131,14 +129,14 @@ export default function CollectionsPage() {
     const token = getAdminToken();
     if (!token) return;
     try {
-      const detail = await getCharacterCollection(token, collection.id);
+      const detail = await getLessonCollection(token, collection.id);
       setEditing(detail);
       setForm({
-        name: detail.name,
+        title: detail.title,
         description: detail.description,
         coverImage: detail.coverImage,
-        order: detail.order,
-        characterIds: detail.characters?.map((c: { id: string }) => c.id) || [],
+        isPublic: detail.isPublic,
+        lessonIds: detail.lessons?.map((lesson: { id: string }) => lesson.id) || [],
       });
       setOpen(true);
     } catch (e) {
@@ -147,13 +145,13 @@ export default function CollectionsPage() {
   }
 
   async function onSubmit() {
-    if (!form.name.trim()) {
+    if (!form.title.trim()) {
       toast.error("Collection name is required");
       return;
     }
 
-    if (form.characterIds.length === 0) {
-      toast.error("Please select at least one character");
+    if (form.lessonIds.length === 0) {
+      toast.error("Please select at least one lesson");
       return;
     }
 
@@ -162,21 +160,21 @@ export default function CollectionsPage() {
 
     try {
       if (editing) {
-        await updateCharacterCollection(token, editing.id, {
-          name: form.name.trim(),
+        await updateLessonCollection(token, editing.id, {
+          title: form.title.trim(),
           description: form.description ? form.description.trim() : undefined,
           coverImage: form.coverImage,
-          order: form.order,
-          characterIds: form.characterIds,
+          isPublic: form.isPublic,
+          lessonIds: form.lessonIds,
         });
         toast.success("Collection updated");
       } else {
-        await createCharacterCollection(token, {
-          name: form.name.trim(),
+        await createLessonCollection(token, {
+          title: form.title.trim(),
           description: form.description ? form.description.trim() : undefined,
           coverImage: form.coverImage,
-          order: form.order,
-          characterIds: form.characterIds,
+          isPublic: form.isPublic,
+          lessonIds: form.lessonIds,
         });
         toast.success("Collection created");
       }
@@ -221,7 +219,7 @@ export default function CollectionsPage() {
     const token = getAdminToken();
     if (!token) return;
     try {
-      await deleteCharacterCollection(token, collection.id);
+      await deleteLessonCollection(token, collection.id);
       toast.success("Collection deleted");
       setDeleteDialog({ open: false, collection: null });
       await load();
@@ -245,7 +243,7 @@ export default function CollectionsPage() {
           <div>
             <CardTitle>Collections</CardTitle>
             <CardDescription>
-              Create curated collections of characters for learning.
+              Create curated collections of lessons for learning.
             </CardDescription>
           </div>
         </div>
@@ -261,8 +259,8 @@ export default function CollectionsPage() {
               <TableHead>Cover</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Description</TableHead>
-              <TableHead className="text-center">Order</TableHead>
-              <TableHead className="text-right">Characters</TableHead>
+              <TableHead className="text-center">Public</TableHead>
+              <TableHead className="text-right">Lessons</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -283,7 +281,7 @@ export default function CollectionsPage() {
                       <div className="w-12 h-12 rounded-md overflow-hidden bg-muted">
                         <img
                           src={row.coverImage}
-                          alt={row.name}
+                          alt={row.title}
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -293,13 +291,15 @@ export default function CollectionsPage() {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="font-medium">{row.name}</TableCell>
+                  <TableCell className="font-medium">{row.title}</TableCell>
                   <TableCell className="text-muted-foreground max-w-xs truncate">
                     {row.description || "—"}
                   </TableCell>
-                  <TableCell className="text-center">{row.order}</TableCell>
+                  <TableCell className="text-center">
+                    {row.isPublic ? "Yes" : "No"}
+                  </TableCell>
                   <TableCell className="text-right">
-                    {row.characterCount}
+                    {row.itemCount}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -336,7 +336,7 @@ export default function CollectionsPage() {
                               Delete collection?
                             </AlertDialogTitle>
                             <AlertDialogDescription>
-                              This will delete "{row.name}" and all its
+                              This will delete "{row.title}" and all its
                               associations. This action cannot be undone.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
@@ -368,8 +368,8 @@ export default function CollectionsPage() {
             </DialogTitle>
             <DialogDescription>
               {editing
-                ? "Update the collection details and characters."
-                : "Create a new collection with a selection of characters."}
+                ? "Update the collection details and lessons."
+                : "Create a new collection with a selection of lessons."}
             </DialogDescription>
           </DialogHeader>
 
@@ -380,11 +380,11 @@ export default function CollectionsPage() {
               <div className="grid gap-2">
                 <Label>Name *</Label>
                 <Input
-                  value={form.name}
+                  value={form.title}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, name: e.target.value }))
+                    setForm((f) => ({ ...f, title: e.target.value }))
                   }
-                  placeholder="e.g., Renaissance Inventors"
+                  placeholder="e.g., Kingdom Builders"
                 />
               </div>
               <div className="grid gap-2">
@@ -464,68 +464,65 @@ export default function CollectionsPage() {
                   </div>
                 )}
               </div>
-              <div className="grid gap-2">
-                <Label>Display Order</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={form.order}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      order: parseInt(e.target.value, 10) || 0,
-                    }))
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="collection-public"
+                  checked={form.isPublic}
+                  onCheckedChange={(checked) =>
+                    setForm((f) => ({ ...f, isPublic: checked === true }))
                   }
-                  placeholder="0 (lower numbers appear first)"
                 />
+                <Label htmlFor="collection-public">
+                  Public collection for the mobile app
+                </Label>
               </div>
             </div>
 
-            {/* Character Selection */}
+            {/* Lesson Selection */}
             <div className="space-y-3 pt-4 border-t">
               <h3 className="font-semibold text-sm">
-                Characters ({form.characterIds.length} selected)
+                Lessons ({form.lessonIds.length} selected)
               </h3>
 
               <div className="border rounded-lg p-3 max-h-75 overflow-y-auto space-y-2">
-                {loadingCharacters ? (
+                {loadingLessons ? (
                   <div className="text-sm text-muted-foreground p-2">
-                    Loading characters...
+                    Loading lessons...
                   </div>
-                ) : allCharacters.length === 0 ? (
+                ) : allLessons.length === 0 ? (
                   <div className="text-sm text-muted-foreground p-2">
-                    No characters available. Please seed the database first.
+                    No lessons available yet.
                   </div>
                 ) : (
-                  allCharacters.map((character) => (
+                  allLessons.map((lesson) => (
                     <div
-                      key={character.id}
+                      key={lesson.id}
                       className="flex items-center gap-2 p-2 rounded hover:bg-muted"
                     >
                       <Checkbox
-                        id={`char-${character.id}`}
-                        checked={form.characterIds.includes(character.id)}
+                        id={`lesson-${lesson.id}`}
+                        checked={form.lessonIds.includes(lesson.id)}
                         onCheckedChange={(checked) => {
                           if (checked) {
                             setForm((f) => ({
                               ...f,
-                              characterIds: [...f.characterIds, character.id],
+                              lessonIds: [...f.lessonIds, lesson.id],
                             }));
                           } else {
                             setForm((f) => ({
                               ...f,
-                              characterIds: f.characterIds.filter(
-                                (id) => id !== character.id,
+                              lessonIds: f.lessonIds.filter(
+                                (id) => id !== lesson.id,
                               ),
                             }));
                           }
                         }}
                       />
                       <label
-                        htmlFor={`char-${character.id}`}
+                        htmlFor={`lesson-${lesson.id}`}
                         className="flex-1 cursor-pointer text-sm"
                       >
-                        {character.name}
+                        {lesson.title}
                       </label>
                     </div>
                   ))

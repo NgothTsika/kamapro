@@ -1,5 +1,6 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
+import { useTranslation } from "react-i18next";
 import {
   getParagraphs,
   StoryParagraphs,
@@ -7,6 +8,7 @@ import {
   StoryTitleBlock,
 } from "./story-ui";
 import { NarrationPlayerButton } from "./NarrationPlayerButton";
+import { useAudioPreferences } from "@/lib/audio/audio-preferences-context";
 
 interface Props {
   content: any;
@@ -25,12 +27,14 @@ export function TextAudioStep({
   onAudioStart,
   onAudioFinished,
 }: Props) {
+  const { t } = useTranslation();
+  const { preferences } = useAudioPreferences();
   const paragraphs = getParagraphs(content.body, content.details);
 
   return (
     <View style={styles.container}>
       <StoryTitleBlock
-        eyebrow={content.eyebrow ?? "Narrated Step"}
+        eyebrow={content.eyebrow ?? t("story.narratedStep")}
         title={content.title}
         subtitle={content.subtitle}
       />
@@ -39,15 +43,19 @@ export function TextAudioStep({
       {mediaUrl && (
         <NarrationPlayerButton
           mediaUrl={mediaUrl}
-          label="Play narration"
+          label={t("audio.playNarration")}
           onPlaybackStart={onAudioStart}
           onPlaybackEnd={onAudioFinished}
+          autoPlay={
+            preferences.narrationEnabled && preferences.autoPlayNarration
+          }
+          playbackVolume={preferences.narrationVolume}
         />
       )}
 
       {showAction ? (
         <StoryPrimaryButton
-          label={content.buttonLabel ?? "Continue"}
+          label={content.buttonLabel ?? t("story.continue")}
           onPress={onComplete}
         />
       ) : null}

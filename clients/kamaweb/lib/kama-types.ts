@@ -604,6 +604,27 @@ export type AdminCharacterCollectionDetail = AdminCharacterCollectionSummary & {
   }>;
 };
 
+export type AdminLessonCollectionSummary = {
+  id: string;
+  title: string;
+  description?: string;
+  coverImage?: string;
+  isPublic: boolean;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminLessonCollectionDetail = AdminLessonCollectionSummary & {
+  lessons: Array<{
+    id: string;
+    slug: string;
+    title: string;
+    coverImage?: string | null;
+    xpReward?: number | null;
+  }>;
+};
+
 // ---------- COLLECTIONS ADMIN TYPES ----------
 export type AdminCollectionSummary = {
   id: string;

@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import {
   StoryParagraphs,
   StoryTitleBlock,
@@ -7,6 +8,7 @@ import {
   storyColors,
 } from "./story-ui";
 import { NarrationPlayerButton } from "./NarrationPlayerButton";
+import { useAudioPreferences } from "@/lib/audio/audio-preferences-context";
 
 interface Props {
   chapterOrder: number;
@@ -27,19 +29,21 @@ export function ChapterIntroStep({
   onAudioStart,
   onAudioFinished,
 }: Props) {
+  const { t } = useTranslation();
+  const { preferences } = useAudioPreferences();
   const paragraphs = getParagraphs(introText);
 
   return (
     <View style={styles.container}>
       <StoryTitleBlock
-        eyebrow={`Chapter ${chapterOrder}`}
+        eyebrow={`${t("story.chapter")} ${chapterOrder}`}
         title={chapterTitle}
         subtitle={lessonTitle}
       />
 
       {paragraphs.length > 0 ? (
         <View style={styles.introCard}>
-          <Text style={styles.introLabel}>Intro</Text>
+          <Text style={styles.introLabel}>{t("story.intro")}</Text>
           <StoryParagraphs paragraphs={paragraphs} />
         </View>
       ) : null}
@@ -47,9 +51,13 @@ export function ChapterIntroStep({
       {introAudioUrl ? (
         <NarrationPlayerButton
           mediaUrl={introAudioUrl}
-          label="Play chapter narration"
+          label={t("audio.playChapterNarration")}
           onPlaybackStart={onAudioStart}
           onPlaybackEnd={onAudioFinished}
+          autoPlay={
+            preferences.narrationEnabled && preferences.autoPlayNarration
+          }
+          playbackVolume={preferences.narrationVolume}
         />
       ) : null}
     </View>

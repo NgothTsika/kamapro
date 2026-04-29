@@ -52,9 +52,13 @@ async function kamaRequest<T>(
 }
 
 export const kama = {
-  async getChapter(chapterId: string): Promise<{ chapter: Chapter }> {
+  async getChapter(
+    chapterId: string,
+    language?: string,
+  ): Promise<{ chapter: Chapter }> {
+    const query = language ? `?language=${encodeURIComponent(language)}` : "";
     const response = await kamaRequest<{ chapter: Chapter }>(
-      `/content/chapters/${chapterId}`,
+      `/content/chapters/${chapterId}${query}`,
       {
         token: null,
       },

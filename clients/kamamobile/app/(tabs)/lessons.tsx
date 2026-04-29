@@ -1,5 +1,7 @@
 import { getLessons, type LessonSummary } from "@/lib";
 import { useTabBarScroll } from "@/hooks/useTabBarScroll";
+import { kama } from "@/lib/kama-api";
+import { loadToken } from "@/lib/auth/token-storage";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -11,6 +13,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { AnimatedLessonProgressBar } from "@/components/lesson/AnimatedLessonProgressBar";
 
 const palette = {
   plum: "#3d0d35",
@@ -27,16 +31,22 @@ const palette = {
 function LessonTile({
   lesson,
   featured,
+  locked,
+  status,
 }: {
   lesson: LessonSummary;
   featured?: boolean;
+  locked?: boolean;
+  status?: string;
 }) {
   return (
     <Pressable
+      disabled={locked}
       onPress={() => router.push(`/lesson/${lesson.slug}`)}
       style={({ pressed }) => [
         styles.lessonCard,
         featured && styles.featuredCard,
+        locked && styles.lessonCardLocked,
         pressed && styles.lessonCardPressed,
       ]}
     >
@@ -46,14 +56,16 @@ function LessonTile({
         imageStyle={styles.lessonHeroImage}
       >
         <View style={styles.lessonHeroShade} />
-        <View style={styles.lessonProgressTrack}>
-          <View
-            style={[
-              styles.lessonProgressFill,
-              { width: featured ? "72%" : "48%" },
-            ]}
-          />
-        </View>
+        {locked ? (
+          <View style={styles.lockBadge}>
+            <MaterialIcons name="lock" size={15} color="#ffffff" />
+            <Text style={styles.lockBadgeText}>Locked</Text>
+          </View>
+        ) : null}
+        <AnimatedLessonProgressBar
+          value={featured ? 0.72 : 0.48}
+          height={14}
+        />
       </ImageBackground>
 
       <View style={styles.lessonBody}>
@@ -70,7 +82,7 @@ function LessonTile({
             <Text style={styles.metaPillText}>{lesson.xpReward ?? 0} XP</Text>
           </View>
           <Text style={styles.lessonCTA}>
-            {featured ? "Continue Story" : "Open Lesson"}
+            {status ?? (featured ? "Continue Story" : "Open Lesson")}
           </Text>
         </View>
       </View>
@@ -80,15 +92,90 @@ function LessonTile({
 
 export default function LessonsScreen() {
   const [lessons, setLessons] = useState<LessonSummary[]>([]);
+  const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
+  const [inProgressLessonIds, setInProgressLessonIds] = useState<string[]>([]);
   const { onScroll } = useTabBarScroll();
 
   useEffect(() => {
-    getLessons()
-      .then((data) => setLessons(data))
-      .catch(() => setLessons([]));
+    void (async () => {
+      try {
+        const data = await getLessons();
+        setLessons(data);
+
+        const token = await loadToken();
+        if (!token) {
+          setCompletedLessonIds([]);
+          setInProgressLessonIds([]);
+          return;
+        }
+
+        const progressList = await Promise.all(
+          data.map((lesson) =>
+            kama
+              .getLessonProgress(lesson.id)
+              .then((result) => ({
+                lessonId: lesson.id,
+                progress: result.progress,
+              }))
+              .catch(() => null),
+          ),
+        );
+
+        const validProgressList = progressList.filter(
+          (item): item is NonNullable<typeof item> => Boolean(item),
+        );
+
+        const completed = validProgressList
+          .filter((item) =>
+            item.progress.lesson.chapters.every(
+              (chapter) => chapter.chapterProgress?.[0]?.completed,
+            ),
+          )
+          .map((item) => item.lessonId);
+
+        const inProgress = validProgressList
+          .filter(
+            (item) =>
+              !completed.includes(item.lessonId) &&
+              item.progress.lesson.chapters.some((chapter) =>
+                Boolean(chapter.chapterProgress?.[0]),
+              ),
+          )
+          .map((item) => item.lessonId);
+
+        setCompletedLessonIds(completed);
+        setInProgressLessonIds(inProgress);
+      } catch {
+        setLessons([]);
+      }
+    })();
   }, []);
 
   const [featured, ...others] = useMemo(() => lessons, [lessons]);
+  const unlockedLessonIds = useMemo(() => {
+    const unlocked = new Set<string>();
+
+    lessons.forEach((lesson, index) => {
+      const previousLessonId = index > 0 ? lessons[index - 1]?.id : null;
+
+      if (
+        index === 0 ||
+        (previousLessonId
+          ? completedLessonIds.includes(previousLessonId)
+          : false)
+      ) {
+        unlocked.add(lesson.id);
+      }
+      if (
+        completedLessonIds.includes(lesson.id) ||
+        inProgressLessonIds.includes(lesson.id)
+      ) {
+        unlocked.add(lesson.id);
+      }
+    });
+
+    return unlocked;
+  }, [completedLessonIds, inProgressLessonIds, lessons]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -110,7 +197,22 @@ export default function LessonsScreen() {
               </Text>
             </View>
 
-            {featured ? <LessonTile lesson={featured} featured /> : null}
+            {featured ? (
+              <LessonTile
+                lesson={featured}
+                featured
+                locked={!unlockedLessonIds.has(featured.id)}
+                status={
+                  completedLessonIds.includes(featured.id)
+                    ? "Restart Lesson"
+                    : inProgressLessonIds.includes(featured.id)
+                      ? "Continue Story"
+                      : unlockedLessonIds.has(featured.id)
+                        ? "Open Lesson"
+                        : "Finish previous lesson"
+                }
+              />
+            ) : null}
 
             <View style={styles.sectionHeading}>
               <Text style={styles.sectionTitle}>More Stories</Text>
@@ -120,7 +222,21 @@ export default function LessonsScreen() {
             </View>
           </View>
         }
-        renderItem={({ item }) => <LessonTile lesson={item} />}
+        renderItem={({ item }) => (
+          <LessonTile
+            lesson={item}
+            locked={!unlockedLessonIds.has(item.id)}
+            status={
+              completedLessonIds.includes(item.id)
+                ? "Restart Lesson"
+                : inProgressLessonIds.includes(item.id)
+                  ? "Continue Story"
+                  : unlockedLessonIds.has(item.id)
+                    ? "Open Lesson"
+                    : "Locked"
+            }
+          />
+        )}
         ListEmptyComponent={
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No lessons yet</Text>
@@ -188,6 +304,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.line,
   },
+  lessonCardLocked: {
+    opacity: 0.72,
+  },
   lessonCardPressed: {
     opacity: 0.95,
   },
@@ -208,17 +327,24 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(31, 5, 28, 0.28)",
   },
-  lessonProgressTrack: {
-    height: 14,
+  lockBadge: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     borderRadius: 999,
-    backgroundColor: "#fff",
-    overflow: "hidden",
-    padding: 2,
+    backgroundColor: "rgba(23, 11, 23, 0.72)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
-  lessonProgressFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: palette.mint,
+  lockBadgeText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
   },
   lessonBody: {
     paddingHorizontal: 18,

@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
 import { StoryPrimaryButton, StoryTitleBlock } from "./story-ui";
 
 interface Props {
@@ -19,14 +20,18 @@ interface Props {
   countdownLabel?: string;
   loading?: boolean;
   disabled?: boolean;
+  tertiaryLabel?: string;
+  onTertiaryPress?: () => void;
+  tertiaryIconName?: React.ComponentProps<typeof MaterialIcons>["name"];
+  tertiaryIconOnly?: boolean;
 }
 
 export function ContinueButtonStep({
   onComplete,
-  label = "Continue",
-  title = "Ready to continue?",
-  subtitle = "The next scene is waiting.",
-  body = "Move forward when you are ready for the next beat of the story.",
+  label,
+  title,
+  subtitle,
+  body,
   showAction = true,
   fixed = false,
   secondaryLabel,
@@ -34,16 +39,27 @@ export function ContinueButtonStep({
   secondaryIconName = "arrow-back-ios-new",
   secondaryIconOnly = false,
   countdownSeconds,
-  countdownLabel = "Auto continuing",
+  countdownLabel,
   loading,
   disabled,
+  tertiaryLabel,
+  onTertiaryPress,
+  tertiaryIconName = "pause",
+  tertiaryIconOnly = false,
 }: Props) {
+  const { t } = useTranslation();
+  const resolvedLabel = label ?? t("story.continue");
+  const resolvedTitle = title ?? t("story.readyToContinue");
+  const resolvedSubtitle = subtitle ?? t("story.nextSceneWaiting");
+  const resolvedBody = body ?? t("story.nextBeatBody");
+  const resolvedCountdownLabel = countdownLabel ?? t("story.autoContinuing");
+
   if (fixed) {
     return (
       <View style={styles.fixedShell}>
         {typeof countdownSeconds === "number" ? (
           <Text style={styles.countdownText}>
-            {`${countdownLabel} in ${countdownSeconds}s`}
+            {`${resolvedCountdownLabel} in ${countdownSeconds}s`}
           </Text>
         ) : null}
 
@@ -67,8 +83,27 @@ export function ContinueButtonStep({
               )}
             </Pressable>
           ) : null}
+          {tertiaryLabel && onTertiaryPress ? (
+            <Pressable
+              onPress={onTertiaryPress}
+              style={[
+                styles.secondaryButton,
+                tertiaryIconOnly && styles.secondaryIconButton,
+              ]}
+            >
+              {tertiaryIconOnly ? (
+                <MaterialIcons
+                  name={tertiaryIconName}
+                  size={18}
+                  color="#21314f"
+                />
+              ) : (
+                <Text style={styles.secondaryButtonText}>{tertiaryLabel}</Text>
+              )}
+            </Pressable>
+          ) : null}
           <StoryPrimaryButton
-            label={label}
+            label={resolvedLabel}
             onPress={onComplete ?? (() => {})}
             loading={loading}
             disabled={disabled}
@@ -80,13 +115,17 @@ export function ContinueButtonStep({
 
   return (
     <View style={styles.container}>
-      <StoryTitleBlock eyebrow="Next" title={title} subtitle={subtitle} />
+      <StoryTitleBlock
+        eyebrow={t("story.next")}
+        title={resolvedTitle}
+        subtitle={resolvedSubtitle}
+      />
       <View style={styles.content}>
-        <Text style={styles.text}>{body}</Text>
+        <Text style={styles.text}>{resolvedBody}</Text>
       </View>
       {showAction ? (
         <StoryPrimaryButton
-          label={label}
+          label={resolvedLabel}
           onPress={onComplete ?? (() => {})}
           loading={loading}
           disabled={disabled}

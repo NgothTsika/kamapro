@@ -1,5 +1,7 @@
 import { Stack } from "expo-router";
 import { AuthProvider } from "@/lib/auth/auth-context";
+import { LocaleProvider } from "@/lib/auth/locale-context";
+import "@/lib/i18n/config";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
@@ -13,6 +15,8 @@ import {
   createRewardedAd,
   getRewardedAdTestId,
 } from "@/lib/ads/google-mobile-ads";
+import { AudioPreferencesProvider } from "@/lib/audio/audio-preferences-context";
+import { ProfilePreferencesProvider } from "@/lib/profile/profile-preferences-context";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -33,10 +37,16 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <AuthProvider>
-        <Stack screenOptions={{ headerShown: false }} />
-        <StatusBar style="auto" />
-      </AuthProvider>
+      <LocaleProvider>
+        <AudioPreferencesProvider>
+          <AuthProvider>
+            <ProfilePreferencesProvider>
+              <Stack screenOptions={{ headerShown: false }} />
+              <StatusBar style="auto" />
+            </ProfilePreferencesProvider>
+          </AuthProvider>
+        </AudioPreferencesProvider>
+      </LocaleProvider>
     </ThemeProvider>
   );
 }

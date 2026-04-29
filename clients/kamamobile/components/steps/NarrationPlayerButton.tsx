@@ -13,6 +13,8 @@ interface Props {
   label?: string;
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
+  autoPlay?: boolean;
+  playbackVolume?: number;
 }
 
 export function NarrationPlayerButton({
@@ -20,8 +22,11 @@ export function NarrationPlayerButton({
   label = "Play narration",
   onPlaybackStart,
   onPlaybackEnd,
+  autoPlay = false,
+  playbackVolume = 1,
 }: Props) {
   const soundRef = useRef<Audio.Sound | null>(null);
+  const autoPlayedRef = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -32,6 +37,19 @@ export function NarrationPlayerButton({
     };
   }, []);
 
+  useEffect(() => {
+    autoPlayedRef.current = false;
+    void soundRef.current?.unloadAsync();
+    soundRef.current = null;
+    setPlaying(false);
+  }, [mediaUrl]);
+
+  useEffect(() => {
+    if (!autoPlay || autoPlayedRef.current) return;
+    autoPlayedRef.current = true;
+    void togglePlayback();
+  }, [autoPlay, mediaUrl]);
+
   async function togglePlayback() {
     try {
       setLoading(true);
@@ -39,7 +57,7 @@ export function NarrationPlayerButton({
       if (!soundRef.current) {
         const { sound } = await Audio.Sound.createAsync(
           { uri: mediaUrl },
-          { shouldPlay: true },
+          { shouldPlay: true, volume: playbackVolume },
         );
 
         soundRef.current = sound;
@@ -60,6 +78,7 @@ export function NarrationPlayerButton({
         return;
       }
 
+      await soundRef.current.setVolumeAsync(playbackVolume);
       const status = await soundRef.current.getStatusAsync();
       if (!status.isLoaded) return;
 

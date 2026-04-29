@@ -2847,3 +2847,284 @@ contentAdminRouter.delete(
     res.status(204).send();
   }),
 );
+
+contentAdminRouter.get(
+  "/admin/lesson-collections",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (_req, res) => {
+    const collections = await prisma.collection.findMany({
+      orderBy: [{ updatedAt: "desc" }],
+      include: {
+        items: {
+          orderBy: [{ order: "asc" }, { addedAt: "asc" }],
+          include: {
+            lesson: {
+              select: {
+                coverImage: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      collections: collections.map((collection) => ({
+        id: collection.id,
+        title: collection.title,
+        description: collection.description,
+        coverImage: collection.items[0]?.lesson.coverImage ?? null,
+        isPublic: collection.isPublic,
+        itemCount: collection.items.length,
+        createdAt: collection.createdAt,
+        updatedAt: collection.updatedAt,
+      })),
+    });
+  }),
+);
+
+contentAdminRouter.get(
+  "/admin/lesson-collections/:collectionId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ collectionId: z.string().min(1) });
+    const { collectionId } = paramsSchema.parse(req.params);
+
+    const collection = await prisma.collection.findUnique({
+      where: { id: collectionId },
+      include: {
+        items: {
+          orderBy: [{ order: "asc" }, { addedAt: "asc" }],
+          include: {
+            lesson: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                coverImage: true,
+                xpReward: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!collection) {
+      throw new HttpError(404, "Collection not found");
+    }
+
+    res.status(200).json({
+      collection: {
+        id: collection.id,
+        title: collection.title,
+        description: collection.description,
+        coverImage: collection.items[0]?.lesson.coverImage ?? null,
+        isPublic: collection.isPublic,
+        itemCount: collection.items.length,
+        createdAt: collection.createdAt,
+        updatedAt: collection.updatedAt,
+        lessons: collection.items.map((item) => item.lesson),
+      },
+    });
+  }),
+);
+
+contentAdminRouter.post(
+  "/admin/lesson-collections",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const bodySchema = z.object({
+      title: z.string().min(1).max(200),
+      description: z.string().max(1000).optional().nullable(),
+      coverImage: z.string().max(10000000).optional().nullable(),
+      isPublic: z.boolean().optional(),
+      lessonIds: z.array(z.string()).default([]),
+    });
+    const body = bodySchema.parse(req.body);
+
+    if (body.lessonIds.length > 0) {
+      const existingLessons = await prisma.lesson.findMany({
+        where: { id: { in: body.lessonIds } },
+        select: { id: true },
+      });
+
+      if (existingLessons.length !== body.lessonIds.length) {
+        throw new HttpError(400, "Some lesson IDs do not exist");
+      }
+    }
+
+    const collection = await prisma.collection.create({
+      data: {
+        userId: req.user!.id,
+        title: body.title.trim(),
+        description: body.description?.trim(),
+        isPublic: body.isPublic ?? true,
+      },
+    });
+
+    if (body.lessonIds.length > 0) {
+      await prisma.collectionItem.createMany({
+        data: body.lessonIds.map((lessonId, index) => ({
+          collectionId: collection.id,
+          lessonId,
+          order: index,
+        })),
+      });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "create_lesson_collection",
+        entityType: "lesson_collection",
+        entityId: collection.id,
+        changes: jsonChanges({
+          title: body.title,
+          description: body.description,
+          isPublic: body.isPublic ?? true,
+          lessonCount: body.lessonIds.length,
+        }),
+      },
+    });
+
+    res.status(201).json({
+      collection: {
+        id: collection.id,
+        title: collection.title,
+        description: collection.description,
+        coverImage: null,
+        isPublic: collection.isPublic,
+        itemCount: body.lessonIds.length,
+        createdAt: collection.createdAt,
+        updatedAt: collection.updatedAt,
+      },
+    });
+  }),
+);
+
+contentAdminRouter.patch(
+  "/admin/lesson-collections/:collectionId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ collectionId: z.string().min(1) });
+    const { collectionId } = paramsSchema.parse(req.params);
+    const bodySchema = z.object({
+      title: z.string().min(1).max(200).optional(),
+      description: z.string().max(1000).optional().nullable(),
+      coverImage: z.string().max(10000000).optional().nullable(),
+      isPublic: z.boolean().optional(),
+      lessonIds: z.array(z.string()).optional(),
+    });
+    const body = bodySchema.parse(req.body);
+
+    const existing = await prisma.collection.findUnique({
+      where: { id: collectionId },
+    });
+    if (!existing) {
+      throw new HttpError(404, "Collection not found");
+    }
+
+    if (body.lessonIds && body.lessonIds.length > 0) {
+      const existingLessons = await prisma.lesson.findMany({
+        where: { id: { in: body.lessonIds } },
+        select: { id: true },
+      });
+      if (existingLessons.length !== body.lessonIds.length) {
+        throw new HttpError(400, "Some lesson IDs do not exist");
+      }
+    }
+
+    const collection = await prisma.collection.update({
+      where: { id: collectionId },
+      data: {
+        title: body.title?.trim(),
+        description:
+          body.description === undefined ? undefined : body.description?.trim(),
+        isPublic: body.isPublic ?? undefined,
+      },
+    });
+
+    if (body.lessonIds !== undefined) {
+      await prisma.collectionItem.deleteMany({ where: { collectionId } });
+
+      if (body.lessonIds.length > 0) {
+        await prisma.collectionItem.createMany({
+          data: body.lessonIds.map((lessonId, index) => ({
+            collectionId,
+            lessonId,
+            order: index,
+          })),
+        });
+      }
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "update_lesson_collection",
+        entityType: "lesson_collection",
+        entityId: collectionId,
+        changes: jsonChanges({
+          title: body.title,
+          description: body.description,
+          isPublic: body.isPublic,
+          lessonCount: body.lessonIds?.length,
+        }),
+      },
+    });
+
+    const itemCount =
+      body.lessonIds?.length ??
+      (await prisma.collectionItem.count({ where: { collectionId } }));
+
+    res.status(200).json({
+      collection: {
+        id: collection.id,
+        title: collection.title,
+        description: collection.description,
+        coverImage: null,
+        isPublic: collection.isPublic,
+        itemCount,
+        createdAt: collection.createdAt,
+        updatedAt: collection.updatedAt,
+      },
+    });
+  }),
+);
+
+contentAdminRouter.delete(
+  "/admin/lesson-collections/:collectionId",
+  requireAuth,
+  adminRoles,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ collectionId: z.string().min(1) });
+    const { collectionId } = paramsSchema.parse(req.params);
+
+    const existing = await prisma.collection.findUnique({
+      where: { id: collectionId },
+    });
+    if (!existing) {
+      throw new HttpError(404, "Collection not found");
+    }
+
+    await prisma.collectionItem.deleteMany({ where: { collectionId } });
+    await prisma.collection.delete({ where: { id: collectionId } });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: req.user!.id,
+        action: "delete_lesson_collection",
+        entityType: "lesson_collection",
+        entityId: collectionId,
+        changes: jsonChanges({ title: existing.title }),
+      },
+    });
+
+    res.status(204).send();
+  }),
+);

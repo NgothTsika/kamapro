@@ -733,6 +733,92 @@ contentRouter.get(
   }),
 );
 
+contentRouter.get(
+  "/lesson-collections",
+  asyncHandler(async (_req, res) => {
+    const collections = await prisma.collection.findMany({
+      where: { isPublic: true },
+      orderBy: [{ updatedAt: "desc" }],
+      include: {
+        items: {
+          orderBy: [{ order: "asc" }, { addedAt: "asc" }],
+          include: {
+            lesson: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                description: true,
+                coverImage: true,
+                xpReward: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      collections: collections.map((collection) => ({
+        id: collection.id,
+        title: collection.title,
+        description: collection.description,
+        coverImage: collection.items[0]?.lesson.coverImage ?? null,
+        itemCount: collection.items.length,
+        createdAt: collection.createdAt,
+        updatedAt: collection.updatedAt,
+        lessons: collection.items.map((item) => item.lesson),
+      })),
+    });
+  }),
+);
+
+contentRouter.get(
+  "/lesson-collections/:collectionId",
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({ collectionId: z.string().min(1) });
+    const { collectionId } = paramsSchema.parse(req.params);
+
+    const collection = await prisma.collection.findFirst({
+      where: { id: collectionId, isPublic: true },
+      include: {
+        items: {
+          orderBy: [{ order: "asc" }, { addedAt: "asc" }],
+          include: {
+            lesson: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                description: true,
+                coverImage: true,
+                xpReward: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!collection) {
+      return res.status(404).json({ error: "Collection not found" });
+    }
+
+    res.status(200).json({
+      collection: {
+        id: collection.id,
+        title: collection.title,
+        description: collection.description,
+        coverImage: collection.items[0]?.lesson.coverImage ?? null,
+        itemCount: collection.items.length,
+        createdAt: collection.createdAt,
+        updatedAt: collection.updatedAt,
+        lessons: collection.items.map((item) => item.lesson),
+      },
+    });
+  }),
+);
+
 // ==================== INTERACTIVE CHAPTERS (PUBLIC) ====================
 
 // Get lesson with all chapters and steps

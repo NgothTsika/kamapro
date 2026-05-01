@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Heart, Flame, Lock, Gift, Trophy, Clock } from "lucide-react";
+import { Heart, Flame, Gift, Trophy, Clock } from "lucide-react";
 import {
   getGamificationSummary,
   getHearts,
@@ -267,7 +267,7 @@ export default function GamificationDashboard() {
       {/* Quick Stats */}
       <Card className="p-4 bg-linear-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
         <h3 className="font-semibold mb-3 text-gray-900 dark:text-white">
-          Today's Progress
+          Today&apos;s Progress
         </h3>
         <div className="grid grid-cols-3 gap-4">
           <div>

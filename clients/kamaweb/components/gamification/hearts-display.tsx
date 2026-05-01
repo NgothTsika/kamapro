@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Heart, Clock } from "lucide-react";
-import { getHearts, recoverHearts } from "@/lib/kama-api";
+import { getHearts } from "@/lib/kama-api";
 import { UserHeartsResponse } from "@/lib/kama-types";
 
 interface HeartsDisplayProps {
@@ -72,7 +72,6 @@ export function HeartsDisplay({ compact = false }: HeartsDisplayProps) {
   }
 
   const isAtMax = hearts.hearts >= hearts.maxHearts;
-  const heartsPercentage = (hearts.hearts / hearts.maxHearts) * 100;
 
   if (compact) {
     return (

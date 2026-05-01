@@ -33,6 +33,7 @@ const getBackendUrl = () => {
   const backendUrl =
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
+    process.env.API_URL_DEPLOYED ||
     process.env.API_URL_LOCAL ||
     "http://localhost:4000";
 
@@ -46,7 +47,10 @@ const getBackendUrl = () => {
     );
   }
 
-  return backendUrl.replace(/\/$/, ""); // Remove trailing slash
+  return backendUrl
+    .replace(/\/$/, "")
+    .replace(/\/api\/v\d+$/, "")
+    .replace(/\/api$/, "");
 };
 
 const BACKEND_URL = getBackendUrl();
@@ -94,6 +98,27 @@ function createForwardHeaders(
   return forwardHeaders;
 }
 
+function getProxyPath(request: NextRequest, routeParams: string[]): string {
+  if (routeParams.length > 0) {
+    return `/${routeParams.join("/")}`;
+  }
+
+  const fallbackRoute = request.nextUrl.searchParams.get("nxtProute");
+  if (fallbackRoute) {
+    return `/${fallbackRoute.replace(/^\/+/, "")}`;
+  }
+
+  return "/";
+}
+
+function getForwardedSearchParams(request: NextRequest): string {
+  const searchParams = new URLSearchParams(request.nextUrl.searchParams);
+  searchParams.delete("nxtProute");
+
+  const queryString = searchParams.toString();
+  return queryString ? `?${queryString}` : "";
+}
+
 /**
  * Main handler for all HTTP methods
  */
@@ -105,8 +130,8 @@ export async function handler(
     // Reconstruct the path from route params
     const params = await context.params;
     const routeParams = params.route || [];
-    const pathname = "/" + routeParams.join("/");
-    const searchParams = request.nextUrl.search;
+    const pathname = getProxyPath(request, routeParams);
+    const searchParams = getForwardedSearchParams(request);
 
     // Check authentication requirements
     if (requiresAuth(pathname)) {

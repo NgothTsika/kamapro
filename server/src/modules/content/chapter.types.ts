@@ -43,7 +43,32 @@ export const CreateChapterStepSchema = z.object({
   type: ChapterStepTypeEnum,
   content: z.record(z.any()),
   mediaUrl: z.string().url().optional(),
-  mediaType: z.enum(["image", "video", "none"]).optional(),
+  mediaType: z.enum(["image", "video", "audio", "none"]).optional(),
+  backgroundMusic: z
+    .object({
+      url: z.string().url(),
+      volume: z.number().min(0).max(1).optional().default(0.3),
+    })
+    .optional()
+    .nullable(),
+  soundEffects: z
+    .array(
+      z.object({
+        url: z.string().url(),
+        trigger: z.enum(["onAppear", "onTap", "onComplete"]),
+        volume: z.number().min(0).max(1).optional().default(1),
+      }),
+    )
+    .optional()
+    .nullable(),
+  narration: z
+    .object({
+      url: z.string().url(),
+      defaultSpeed: z.number().min(0.5).max(2).optional().default(1),
+      defaultVolume: z.number().min(0).max(1).optional().default(1),
+    })
+    .optional()
+    .nullable(),
 });
 
 export type CreateChapterStepRequest = z.infer<typeof CreateChapterStepSchema>;
@@ -54,7 +79,10 @@ export const UpdateChapterStepSchema = z.object({
   type: ChapterStepTypeEnum.optional(),
   content: z.record(z.any()).optional(),
   mediaUrl: z.string().url().optional(),
-  mediaType: z.enum(["image", "video", "none"]).optional(),
+  mediaType: z.enum(["image", "video", "audio", "none"]).optional(),
+  backgroundMusic: CreateChapterStepSchema.shape.backgroundMusic,
+  soundEffects: CreateChapterStepSchema.shape.soundEffects,
+  narration: CreateChapterStepSchema.shape.narration,
 });
 
 export type UpdateChapterStepRequest = z.infer<typeof UpdateChapterStepSchema>;
@@ -105,6 +133,15 @@ export interface ChapterStepResponse {
   content: Record<string, any>;
   mediaUrl?: string;
   mediaType?: string;
+  plainText: string;
+  backgroundMusic?: Record<string, any> | null;
+  soundEffects?: Array<Record<string, any>> | null;
+  narration?: Record<string, any> | null;
+  backgroundMusicUrl?: string | null;
+  backgroundMusicVolume: number;
+  narrationUrl?: string | null;
+  narrationSpeed: number;
+  narrationVolume: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -149,12 +186,12 @@ export function validateStepContent(
   content: any,
 ): boolean {
   const validators: Record<ChapterStepType, (c: any) => boolean> = {
-    TEXT: (c) => c.body && typeof c.body === "string",
+    TEXT: (c) =>
+      (typeof c.body === "string" && c.body.trim().length > 0) ||
+      (Array.isArray(c.body) && c.body.length > 0),
     TEXT_AUDIO: (c) =>
-      c.body &&
-      typeof c.body === "string" &&
-      c.audioUrl &&
-      typeof c.audioUrl === "string",
+      (typeof c.body === "string" && c.body.trim().length > 0) ||
+      (Array.isArray(c.body) && c.body.length > 0),
     IMAGE_FULL: (c) =>
       c.imageUrl &&
       typeof c.imageUrl === "string" &&
@@ -178,8 +215,15 @@ export function validateStepContent(
       c.correctOption >= 0 &&
       c.correctOption < c.options.length,
     RECAP: (c) =>
-      Array.isArray(c.points) &&
-      c.points.every((p: any) => typeof p === "string"),
+      (Array.isArray(c.points) &&
+        c.points.every((p: any) => typeof p === "string")) ||
+      (Array.isArray(c.items) &&
+        c.items.every(
+          (item: any) =>
+            typeof item === "object" &&
+            item !== null &&
+            (typeof item.text === "string" || typeof item.plainText === "string"),
+        )),
     CONTINUE_BUTTON: (c) => true,
   };
 

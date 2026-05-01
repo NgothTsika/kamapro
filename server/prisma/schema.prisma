@@ -217,6 +217,9 @@ model ChapterStep {
   content     Json             // flexible: { body, title, options, correctOption, explanation, ... }
   mediaUrl    String?
   mediaType   String?          // "image", "video", "none"
+  backgroundMusic Json?         // { url, volume }
+  soundEffects    Json?         // [{ url, trigger, volume }]
+  narration       Json?         // { url, defaultSpeed, defaultVolume }
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 

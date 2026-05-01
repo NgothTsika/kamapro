@@ -511,11 +511,7 @@ export async function createAdminLesson(
     order?: number;
     categoryId?: string | null;
     topicId?: string | null;
-    deepDiveContent?: string | null;
-    titleAudioUrl?: string | null; // NEW
-    hookAudioUrl?: string | null; // NEW
-    contentAudioUrl?: string | null; // NEW
-    deepDiveAudioUrl?: string | null; // NEW
+    characterId?: string | null;
   },
 ): Promise<AdminLessonDetail> {
   const data = await apiRequest<{ lesson: AdminLessonDetail }>(
@@ -545,11 +541,6 @@ export async function updateAdminLesson(
     order: number;
     categoryId: string | null;
     topicId: string | null;
-    deepDiveContent: string | null;
-    titleAudioUrl: string | null; // NEW
-    hookAudioUrl: string | null; // NEW
-    contentAudioUrl: string | null; // NEW
-    deepDiveAudioUrl: string | null; // NEW
     characterId: string | null; // UPDATED: single character, not array
   }>,
 ): Promise<AdminLessonDetail> {
@@ -2756,7 +2747,18 @@ export async function createChapterStep(
     type: StepType;
     content: StepContent;
     mediaUrl?: string;
-    mediaType?: "image" | "video" | "none";
+    mediaType?: "image" | "video" | "audio" | "none";
+    backgroundMusic?: { url: string; volume: number } | null;
+    soundEffects?: Array<{
+      url: string;
+      trigger: "onAppear" | "onTap" | "onComplete";
+      volume: number;
+    }> | null;
+    narration?: {
+      url: string;
+      defaultSpeed: number;
+      defaultVolume: number;
+    } | null;
   },
 ): Promise<ChapterStep> {
   const response = await apiRequest<{ step: ChapterStep }>(
@@ -2783,7 +2785,18 @@ export async function updateChapterStep(
     type: StepType;
     content: StepContent;
     mediaUrl: string;
-    mediaType: "image" | "video" | "none";
+    mediaType: "image" | "video" | "audio" | "none";
+    backgroundMusic: { url: string; volume: number } | null;
+    soundEffects: Array<{
+      url: string;
+      trigger: "onAppear" | "onTap" | "onComplete";
+      volume: number;
+    }> | null;
+    narration: {
+      url: string;
+      defaultSpeed: number;
+      defaultVolume: number;
+    } | null;
   }>,
 ): Promise<ChapterStep> {
   const response = await apiRequest<{ step: ChapterStep }>(

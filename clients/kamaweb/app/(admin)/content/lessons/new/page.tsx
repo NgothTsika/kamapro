@@ -23,7 +23,6 @@ import { Switch } from "@/components/ui/switch";
 import { FileUpload } from "@/components/file-upload";
 import { getAdminToken } from "@/lib/admin-auth";
 import {
-  assignLessonToCharacter,
   createAdminLesson,
   getAdminCategories,
   getAdminTopics,
@@ -55,11 +54,6 @@ export default function NewLessonPage() {
     isPremium: false,
     categoryId: "",
     topicId: "",
-    titleAudioUrl: "",
-    hookAudioUrl: "",
-    contentAudioUrl: "",
-    deepDiveContent: "",
-    deepDiveAudioUrl: "",
   });
 
   useEffect(() => {
@@ -101,18 +95,8 @@ export default function NewLessonPage() {
         isPremium: form.isPremium,
         categoryId: form.categoryId || null,
         topicId: form.topicId || null,
-        deepDiveContent: form.deepDiveContent.trim() || null,
-        titleAudioUrl: form.titleAudioUrl.trim() || null,
-        hookAudioUrl: form.hookAudioUrl.trim() || null,
-        contentAudioUrl: form.contentAudioUrl.trim() || null,
-        deepDiveAudioUrl: form.deepDiveAudioUrl.trim() || null,
+        characterId: form.characterId || null,
       });
-
-      if (form.characterId) {
-        await assignLessonToCharacter(token, form.characterId, {
-          lessonId: lesson.id,
-        });
-      }
 
       toast.success("Lesson created");
       router.replace(`/content/lessons/${lesson.id}`);
@@ -245,7 +229,7 @@ export default function NewLessonPage() {
             </div>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="desc">Short description</Label>
+            <Label htmlFor="desc">Description HTML</Label>
             <Textarea
               id="desc"
               value={form.description}
@@ -255,69 +239,12 @@ export default function NewLessonPage() {
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="hook">Hook</Label>
-            <Input
+            <Label htmlFor="hook">Hook HTML</Label>
+            <Textarea
               id="hook"
               value={form.hook}
               onChange={(e) => setForm((f) => ({ ...f, hook: e.target.value }))}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="titleAudio">Title Audio URL (optional)</Label>
-            <Input
-              id="titleAudio"
-              placeholder="https://..."
-              value={form.titleAudioUrl}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, titleAudioUrl: e.target.value }))
-              }
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="hookAudio">Hook Audio URL (optional)</Label>
-            <Input
-              id="hookAudio"
-              placeholder="https://..."
-              value={form.hookAudioUrl}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, hookAudioUrl: e.target.value }))
-              }
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="contentAudio">Content Audio URL (optional)</Label>
-            <Input
-              id="contentAudio"
-              placeholder="https://..."
-              value={form.contentAudioUrl}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, contentAudioUrl: e.target.value }))
-              }
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="deepDive">Deep Dive Content (optional)</Label>
-            <Textarea
-              id="deepDive"
-              className="min-h-32"
-              placeholder="Extended learning content for deep divers"
-              value={form.deepDiveContent}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, deepDiveContent: e.target.value }))
-              }
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="deepDiveAudio">
-              Deep Dive Audio URL (optional)
-            </Label>
-            <Input
-              id="deepDiveAudio"
-              placeholder="https://..."
-              value={form.deepDiveAudioUrl}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, deepDiveAudioUrl: e.target.value }))
-              }
+              rows={5}
             />
           </div>
           <div className="grid gap-2">

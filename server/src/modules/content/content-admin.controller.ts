@@ -7,7 +7,11 @@ import { requireAuth } from "../../middleware/auth.middleware";
 import { requireRole } from "../../middleware/role.middleware";
 import { HttpError } from "../../lib/errors";
 import * as chapterStepsService from "./chapter-steps.service";
-import { validateStepContent, ChapterStepTypeEnum } from "./chapter.types";
+import {
+  validateStepContent,
+  CreateChapterStepSchema,
+  UpdateChapterStepSchema,
+} from "./chapter.types";
 
 const adminRoles = requireRole("ADMIN", "MODERATOR");
 let quizChapterIdColumnPromise: Promise<boolean> | null = null;
@@ -524,20 +528,7 @@ contentAdminRouter.get(
     const paramsSchema = z.object({ lessonId: z.string().min(1) });
     const { lessonId } = paramsSchema.parse(req.params);
     const quizChapterIdEnabled = await hasQuizChapterIdColumn();
-    const [
-      hasLessonDeepDiveContent,
-      hasLessonTitleAudioUrl,
-      hasLessonHookAudioUrl,
-      hasLessonContentAudioUrl,
-      hasLessonDeepDiveAudioUrl,
-      hasChapterIntroText,
-      hasChapterIntroAudioUrl,
-    ] = await Promise.all([
-      hasTableColumn("Lesson", "deepDiveContent"),
-      hasTableColumn("Lesson", "titleAudioUrl"),
-      hasTableColumn("Lesson", "hookAudioUrl"),
-      hasTableColumn("Lesson", "contentAudioUrl"),
-      hasTableColumn("Lesson", "deepDiveAudioUrl"),
+    const [hasChapterIntroText, hasChapterIntroAudioUrl] = await Promise.all([
       hasTableColumn("Chapter", "introText"),
       hasTableColumn("Chapter", "introAudioUrl"),
     ]);
@@ -556,13 +547,13 @@ contentAdminRouter.get(
       order: true,
       categoryId: true,
       topicId: true,
-      ...(hasLessonDeepDiveContent ? { deepDiveContent: true } : {}),
-      ...(hasLessonTitleAudioUrl ? { titleAudioUrl: true } : {}),
-      ...(hasLessonHookAudioUrl ? { hookAudioUrl: true } : {}),
-      ...(hasLessonContentAudioUrl ? { contentAudioUrl: true } : {}),
-      ...(hasLessonDeepDiveAudioUrl ? { deepDiveAudioUrl: true } : {}),
       category: { select: { id: true, name: true, slug: true } },
       topic: { select: { id: true, name: true, slug: true } },
+      relatedCharacters: {
+        select: {
+          character: { select: { id: true, name: true, slug: true } },
+        },
+      },
       chapters: {
         orderBy: { order: "asc" as const },
         select: {
@@ -599,32 +590,10 @@ contentAdminRouter.get(
     res.status(200).json({
       lesson: {
         ...lesson,
-        deepDiveContent: hasLessonDeepDiveContent
-          ? "deepDiveContent" in lesson
-            ? (lesson.deepDiveContent ?? null)
-            : null
-          : null,
-        titleAudioUrl: hasLessonTitleAudioUrl
-          ? "titleAudioUrl" in lesson
-            ? (lesson.titleAudioUrl ?? null)
-            : null
-          : null,
-        hookAudioUrl: hasLessonHookAudioUrl
-          ? "hookAudioUrl" in lesson
-            ? (lesson.hookAudioUrl ?? null)
-            : null
-          : null,
-        contentAudioUrl: hasLessonContentAudioUrl
-          ? "contentAudioUrl" in lesson
-            ? (lesson.contentAudioUrl ?? null)
-            : null
-          : null,
-        deepDiveAudioUrl: hasLessonDeepDiveAudioUrl
-          ? "deepDiveAudioUrl" in lesson
-            ? (lesson.deepDiveAudioUrl ?? null)
-            : null
-          : null,
-        relatedCharacters: [],
+        descriptionPlainText: chapterStepsService.getStepPlainText(
+          lesson.description ?? "",
+        ),
+        hookPlainText: chapterStepsService.getStepPlainText(lesson.hook ?? ""),
         chapters: lesson.chapters.map((chapter) => ({
           ...chapter,
           content: "",
@@ -664,11 +633,7 @@ contentAdminRouter.post(
       order: z.number().int().optional(),
       categoryId: z.string().optional().nullable(),
       topicId: z.string().optional().nullable(),
-      deepDiveContent: z.string().optional().nullable(),
-      titleAudioUrl: z.string().url().optional().nullable(), // NEW
-      hookAudioUrl: z.string().url().optional().nullable(), // NEW
-      contentAudioUrl: z.string().url().optional().nullable(), // NEW
-      deepDiveAudioUrl: z.string().url().optional().nullable(), // NEW
+      characterId: z.string().optional().nullable(),
     });
     const body = bodySchema.parse(req.body);
     const slug = body.slug?.trim() || (await uniqueLessonSlug(body.title));
@@ -706,25 +671,15 @@ contentAdminRouter.post(
     if (body.topicId !== undefined && body.topicId !== null) {
       createData.topicId = body.topicId;
     }
-    if (body.deepDiveContent !== undefined && body.deepDiveContent !== null) {
-      createData.deepDiveContent = body.deepDiveContent;
-    }
-    if (body.titleAudioUrl !== undefined && body.titleAudioUrl !== null) {
-      createData.titleAudioUrl = body.titleAudioUrl;
-    }
-    if (body.hookAudioUrl !== undefined && body.hookAudioUrl !== null) {
-      createData.hookAudioUrl = body.hookAudioUrl;
-    }
-    if (body.contentAudioUrl !== undefined && body.contentAudioUrl !== null) {
-      createData.contentAudioUrl = body.contentAudioUrl;
-    }
-    if (body.deepDiveAudioUrl !== undefined && body.deepDiveAudioUrl !== null) {
-      createData.deepDiveAudioUrl = body.deepDiveAudioUrl;
-    }
-
     const lesson = await prisma.lesson.create({
       data: createData,
     });
+
+    if (body.characterId) {
+      await prisma.characterLesson.create({
+        data: { lessonId: lesson.id, characterId: body.characterId, order: 0 },
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
@@ -760,11 +715,6 @@ contentAdminRouter.patch(
       order: z.number().int().optional(),
       categoryId: z.string().optional().nullable(),
       topicId: z.string().optional().nullable(),
-      deepDiveContent: z.string().optional().nullable(),
-      titleAudioUrl: z.string().url().optional().nullable(), // NEW
-      hookAudioUrl: z.string().url().optional().nullable(), // NEW
-      contentAudioUrl: z.string().url().optional().nullable(), // NEW
-      deepDiveAudioUrl: z.string().url().optional().nullable(), // NEW
       characterId: z.string().optional().nullable(), // NEW: assign lesson to character
     });
     const body = bodySchema.parse(req.body);
@@ -797,18 +747,6 @@ contentAdminRouter.patch(
         order: body.order ?? undefined,
         categoryId: body.categoryId === undefined ? undefined : body.categoryId,
         topicId: body.topicId === undefined ? undefined : body.topicId,
-        deepDiveContent:
-          body.deepDiveContent === undefined ? undefined : body.deepDiveContent,
-        titleAudioUrl:
-          body.titleAudioUrl === undefined ? undefined : body.titleAudioUrl, // NEW
-        hookAudioUrl:
-          body.hookAudioUrl === undefined ? undefined : body.hookAudioUrl, // NEW
-        contentAudioUrl:
-          body.contentAudioUrl === undefined ? undefined : body.contentAudioUrl, // NEW
-        deepDiveAudioUrl:
-          body.deepDiveAudioUrl === undefined
-            ? undefined
-            : body.deepDiveAudioUrl, // NEW
       },
     });
 
@@ -1018,14 +956,7 @@ contentAdminRouter.post(
     });
     const { chapterId } = paramsSchema.parse(req.params);
 
-    const bodySchema = z.object({
-      order: z.number().int().nonnegative(),
-      type: ChapterStepTypeEnum,
-      content: z.record(z.any()),
-      mediaUrl: z.string().url().optional(),
-      mediaType: z.enum(["image", "video", "none"]).optional(),
-    });
-    const body = bodySchema.parse(req.body);
+    const body = CreateChapterStepSchema.parse(req.body);
 
     // Validate step content matches type
     if (!validateStepContent(body.type, body.content)) {
@@ -1047,7 +978,7 @@ contentAdminRouter.post(
       },
     });
 
-    res.status(201).json({ step });
+    res.status(201).json({ step: chapterStepsService.serializeChapterStep(step) });
   }),
 );
 
@@ -1070,7 +1001,7 @@ contentAdminRouter.get(
 
     if (!step) throw new HttpError(404, "Step not found");
 
-    res.status(200).json({ step });
+    res.status(200).json({ step: chapterStepsService.serializeChapterStep(step) });
   }),
 );
 
@@ -1087,14 +1018,7 @@ contentAdminRouter.patch(
     });
     const { stepId } = paramsSchema.parse(req.params);
 
-    const bodySchema = z.object({
-      order: z.number().int().nonnegative().optional(),
-      type: ChapterStepTypeEnum.optional(),
-      content: z.record(z.any()).optional(),
-      mediaUrl: z.string().url().optional(),
-      mediaType: z.enum(["image", "video", "none"]).optional(),
-    });
-    const body = bodySchema.parse(req.body);
+    const body = UpdateChapterStepSchema.parse(req.body);
 
     // Validate content if provided
     if (body.content || body.type) {
@@ -1126,7 +1050,7 @@ contentAdminRouter.patch(
       },
     });
 
-    res.status(200).json({ step });
+    res.status(200).json({ step: chapterStepsService.serializeChapterStep(step) });
   }),
 );
 
@@ -1191,7 +1115,9 @@ contentAdminRouter.post(
       },
     });
 
-    res.status(200).json({ steps });
+    res.status(200).json({
+      steps: steps.map(chapterStepsService.serializeChapterStep),
+    });
   }),
 );
 

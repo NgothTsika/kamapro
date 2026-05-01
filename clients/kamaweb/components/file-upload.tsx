@@ -6,6 +6,7 @@ import {
   X,
   Image as ImageIcon,
   Video,
+  Volume2,
   Loader2,
   AlertCircle,
 } from "lucide-react";
@@ -24,7 +25,7 @@ import { toast } from "sonner";
 interface FileUploadProps {
   bucket: UploadBucket;
   folder: string;
-  accepts: "image" | "video" | "both";
+  accepts: "image" | "video" | "audio" | "both";
   onUploadComplete: (url: string, filename: string) => void;
   currentValue?: string;
   maxSize?: number; // in MB
@@ -51,6 +52,8 @@ export function FileUpload({
       return ["image/jpeg", "image/png", "image/webp", "image/gif"];
     if (accepts === "video")
       return ["video/mp4", "video/webm", "video/quicktime"];
+    if (accepts === "audio")
+      return ["audio/mpeg", "audio/wav", "audio/ogg", "audio/mp4"];
     return [
       "image/jpeg",
       "image/png",
@@ -65,6 +68,7 @@ export function FileUpload({
   const getAcceptString = () => {
     if (accepts === "image") return ".jpg,.jpeg,.png,.webp,.gif";
     if (accepts === "video") return ".mp4,.webm,.mov";
+    if (accepts === "audio") return ".mp3,.wav,.ogg,.m4a";
     return ".jpg,.jpeg,.png,.webp,.gif,.mp4,.webm,.mov";
   };
 
@@ -178,6 +182,7 @@ export function FileUpload({
   const getIcon = () => {
     if (accepts === "image") return <ImageIcon className="size-12" />;
     if (accepts === "video") return <Video className="size-12" />;
+    if (accepts === "audio") return <Volume2 className="size-12" />;
     return <Upload className="size-12" />;
   };
 
@@ -229,7 +234,9 @@ export function FileUpload({
                   ? `PNG, JPG, WebP, GIF up to ${maxSize}MB`
                   : accepts === "video"
                     ? `MP4, WebM, MOV up to ${maxSize}MB`
-                    : `Image or video up to ${maxSize}MB`}
+                    : accepts === "audio"
+                      ? `MP3, WAV, OGG, M4A up to ${maxSize}MB`
+                      : `Image or video up to ${maxSize}MB`}
             </p>
           </div>
 

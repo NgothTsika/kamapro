@@ -919,9 +919,10 @@ contentRouter.get(
         lesson: {
           ...lesson,
           chapters: lesson.chapters.map((chapter) => ({
-            ...chapter,
-            quizzes: [],
-          })),
+          ...chapter,
+          steps: chapter.steps.map(stepsService.serializeChapterStep),
+          quizzes: [],
+        })),
         },
       });
     }
@@ -937,6 +938,7 @@ contentRouter.get(
         ...lesson,
         chapters: lesson.chapters.map((chapter) => ({
           ...chapter,
+          steps: chapter.steps.map(stepsService.serializeChapterStep),
           quizzes: quizzes
             .filter((quiz) => quiz.chapterId === chapter.id)
             .map((quiz) => ({ ...quiz, chapterId: quiz.chapterId ?? null })),
@@ -963,7 +965,13 @@ contentRouter.get(
 
     if (!chapter) throw new HttpError(404, "Chapter not found");
     if (!quizChapterIdEnabled) {
-      return res.status(200).json({ chapter: { ...chapter, quizzes: [] } });
+      return res.status(200).json({
+        chapter: {
+          ...chapter,
+          steps: chapter.steps.map(stepsService.serializeChapterStep),
+          quizzes: [],
+        },
+      });
     }
 
     const quizzes = await prisma.quiz.findMany({
@@ -975,6 +983,7 @@ contentRouter.get(
     res.status(200).json({
       chapter: {
         ...chapter,
+        steps: chapter.steps.map(stepsService.serializeChapterStep),
         quizzes: quizzes.map((quiz) => ({
           ...quiz,
           chapterId: quiz.chapterId ?? null,

@@ -202,7 +202,9 @@ export type AdminLessonDetail = {
   title: string;
   subtitle: string;
   description: string | null;
+  descriptionPlainText?: string;
   hook: string | null;
+  hookPlainText?: string;
   coverImage: string | null;
   xpReward: number;
   isPremium: boolean;
@@ -210,11 +212,6 @@ export type AdminLessonDetail = {
   order: number;
   categoryId: string | null;
   topicId: string | null;
-  deepDiveContent: string | null;
-  titleAudioUrl?: string | null;
-  hookAudioUrl?: string | null;
-  contentAudioUrl?: string | null;
-  deepDiveAudioUrl?: string | null;
   category: { id: string; name: string; slug: string } | null;
   topic: { id: string; name: string; slug: string } | null;
   chapters: Chapter[];
@@ -971,7 +968,24 @@ export type StepType =
   | "RECAP"
   | "CONTINUE_BUTTON";
 
-export type StepContent = Record<string, any>;
+export type RichParagraph = {
+  html: string;
+  json?: Record<string, unknown> | null;
+  imageUrl?: string | null;
+  plainText: string;
+};
+
+export type SoundEffectTrigger = "onAppear" | "onTap" | "onComplete";
+
+export type StepSoundEffect = {
+  url: string;
+  trigger: SoundEffectTrigger;
+  volume: number;
+};
+
+export type StepContent = Record<string, any> & {
+  plainText?: string;
+};
 
 export type ChapterStep = {
   id: string;
@@ -980,7 +994,20 @@ export type ChapterStep = {
   type: StepType;
   content: StepContent;
   mediaUrl?: string | null;
-  mediaType?: "image" | "video" | "none" | null;
+  mediaType?: "image" | "video" | "audio" | "none" | null;
+  plainText?: string;
+  backgroundMusic?: { url: string; volume: number } | null;
+  soundEffects?: StepSoundEffect[] | null;
+  narration?: {
+    url: string;
+    defaultSpeed: number;
+    defaultVolume: number;
+  } | null;
+  backgroundMusicUrl?: string | null;
+  backgroundMusicVolume?: number;
+  narrationUrl?: string | null;
+  narrationSpeed?: number;
+  narrationVolume?: number;
   createdAt: string;
   updatedAt: string;
 };

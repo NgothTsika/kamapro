@@ -102,11 +102,6 @@ export default function EditLessonPage() {
     isPremium: false,
     categoryId: "",
     topicId: "",
-    deepDiveContent: "",
-    titleAudioUrl: "",
-    hookAudioUrl: "",
-    contentAudioUrl: "",
-    deepDiveAudioUrl: "",
     characterId: "" as string,
   });
 
@@ -114,6 +109,7 @@ export default function EditLessonPage() {
   const [chapterForm, setChapterForm] = useState({
     title: "",
     content: "",
+    coverImage: "",
     order: "0",
     mediaType: "",
     mediaUrl: "",
@@ -186,11 +182,6 @@ export default function EditLessonPage() {
         isPremium: l.isPremium,
         categoryId: l.categoryId ?? "",
         topicId: l.topicId ?? "",
-        deepDiveContent: l.deepDiveContent ?? "",
-        titleAudioUrl: l.titleAudioUrl ?? "",
-        hookAudioUrl: l.hookAudioUrl ?? "",
-        contentAudioUrl: l.contentAudioUrl ?? "",
-        deepDiveAudioUrl: l.deepDiveAudioUrl ?? "",
         characterId: l.relatedCharacters?.[0]?.character.id ?? "",
       });
     } catch (e) {
@@ -222,11 +213,6 @@ export default function EditLessonPage() {
         isPremium: form.isPremium,
         categoryId: form.categoryId || null,
         topicId: form.topicId || null,
-        deepDiveContent: form.deepDiveContent.trim() || null,
-        titleAudioUrl: form.titleAudioUrl.trim() || null,
-        hookAudioUrl: form.hookAudioUrl.trim() || null,
-        contentAudioUrl: form.contentAudioUrl.trim() || null,
-        deepDiveAudioUrl: form.deepDiveAudioUrl.trim() || null,
         characterId: form.characterId || null,
       });
       toast.success("Lesson saved");
@@ -258,6 +244,7 @@ export default function EditLessonPage() {
     setChapterForm({
       title: ch.title,
       content: ch.content ?? "",
+      coverImage: ch.coverImage ?? "",
       order: String(ch.order),
       mediaType: ch.mediaType ?? "",
       mediaUrl: ch.mediaUrl ?? "",
@@ -276,6 +263,7 @@ export default function EditLessonPage() {
         await updateAdminChapter(token, editingChapter.id, {
           title: chapterForm.title.trim(),
           content: chapterForm.content.trim() || "",
+          coverImage: chapterForm.coverImage.trim() || null,
           order: Number(chapterForm.order) || 0,
           mediaType: chapterForm.mediaType || null,
           mediaUrl: chapterForm.mediaUrl.trim() || null,
@@ -288,6 +276,7 @@ export default function EditLessonPage() {
         await createAdminChapter(token, lesson.id, {
           title: chapterForm.title.trim(),
           content: chapterForm.content.trim() || "",
+          coverImage: chapterForm.coverImage.trim() || null,
           order: Number(chapterForm.order) || 0,
           mediaType: chapterForm.mediaType || null,
           mediaUrl: chapterForm.mediaUrl.trim() || null,
@@ -715,7 +704,7 @@ export default function EditLessonPage() {
                 </div>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="desc">Description</Label>
+                <Label htmlFor="desc">Description HTML</Label>
                 <Textarea
                   id="desc"
                   value={form.description}
@@ -725,13 +714,14 @@ export default function EditLessonPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="hook">Hook</Label>
-                <Input
+                <Label htmlFor="hook">Hook HTML</Label>
+                <Textarea
                   id="hook"
                   value={form.hook}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, hook: e.target.value }))
                   }
+                  rows={5}
                 />
               </div>
               <div className="grid gap-2">
@@ -756,78 +746,6 @@ export default function EditLessonPage() {
                   }
                 />
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="deep">Deep dive (optional)</Label>
-                <Textarea
-                  id="deep"
-                  value={form.deepDiveContent}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, deepDiveContent: e.target.value }))
-                  }
-                />
-              </div>
-
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-semibold mb-4">
-                  Audio Narration (optional)
-                </h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="titleAudio">Title Audio URL</Label>
-                    <Input
-                      id="titleAudio"
-                      placeholder="https://..."
-                      value={form.titleAudioUrl}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          titleAudioUrl: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="hookAudio">Hook Audio URL</Label>
-                    <Input
-                      id="hookAudio"
-                      placeholder="https://..."
-                      value={form.hookAudioUrl}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, hookAudioUrl: e.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="contentAudio">Content Audio URL</Label>
-                    <Input
-                      id="contentAudio"
-                      placeholder="https://..."
-                      value={form.contentAudioUrl}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          contentAudioUrl: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="deepDiveAudio">Deep Dive Audio URL</Label>
-                    <Input
-                      id="deepDiveAudio"
-                      placeholder="https://..."
-                      value={form.deepDiveAudioUrl}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          deepDiveAudioUrl: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-
               <div className="border-t pt-4">
                 <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <Label className="text-sm font-semibold block mb-2 text-blue-900">
@@ -1184,6 +1102,25 @@ export default function EditLessonPage() {
                 value={chapterForm.introText}
                 onChange={(e) =>
                   setChapterForm((f) => ({ ...f, introText: e.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Chapter Cover Image</Label>
+              <FileUpload
+                bucket="chapter-media"
+                folder={lesson.id}
+                accepts="image"
+                currentValue={chapterForm.coverImage}
+                onUploadComplete={(url) => {
+                  setChapterForm((f) => ({ ...f, coverImage: url }));
+                }}
+              />
+              <Input
+                placeholder="https://example.com/chapter-cover.jpg"
+                value={chapterForm.coverImage}
+                onChange={(e) =>
+                  setChapterForm((f) => ({ ...f, coverImage: e.target.value }))
                 }
               />
             </div>

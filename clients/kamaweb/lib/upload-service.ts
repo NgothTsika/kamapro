@@ -41,7 +41,7 @@ const MIME_TYPES = {
     "image/svg+xml",
   ],
   video: ["video/mp4", "video/webm", "video/quicktime"],
-  audio: ["audio/mpeg", "audio/wav"],
+  audio: ["audio/mpeg", "audio/wav", "audio/ogg", "audio/mp4"],
   document: [
     "application/json",
     "application/zip",

@@ -136,7 +136,8 @@ export default function CollectionsPage() {
         description: detail.description,
         coverImage: detail.coverImage,
         isPublic: detail.isPublic,
-        lessonIds: detail.lessons?.map((lesson: { id: string }) => lesson.id) || [],
+        lessonIds:
+          detail.lessons?.map((lesson: { id: string }) => lesson.id) || [],
       });
       setOpen(true);
     } catch (e) {
@@ -281,7 +282,7 @@ export default function CollectionsPage() {
                       <div className="w-12 h-12 rounded-md overflow-hidden bg-muted">
                         <img
                           src={row.coverImage}
-                          alt={row.title}
+                          alt={" "}
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -298,9 +299,7 @@ export default function CollectionsPage() {
                   <TableCell className="text-center">
                     {row.isPublic ? "Yes" : "No"}
                   </TableCell>
-                  <TableCell className="text-right">
-                    {row.itemCount}
-                  </TableCell>
+                  <TableCell className="text-right">{row.itemCount}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button

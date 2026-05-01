@@ -54,6 +54,7 @@ import type {
 // Use the local Next.js API proxy instead of calling backend directly
 // This ensures consistent behavior across environments and proper auth handling
 const API_BASE_URL = "/api";
+const ADMIN_TOKEN_STORAGE_KEY = "kama_admin_token";
 
 type ApiOptions = {
   token?: string;
@@ -115,6 +116,11 @@ async function apiRequest<T>(
 }
 
 export { ApiError, API_BASE_URL };
+
+function getStoredAuthToken(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) ?? undefined;
+}
 
 export async function getMe(token: string): Promise<MeUser> {
   const data = await apiRequest<{ user: MeUser }>("/users/me", { token });
@@ -248,6 +254,99 @@ export async function deleteAchievement(
     token,
     method: "DELETE",
   });
+}
+
+type ApiDataResponse<T> = {
+  success: boolean;
+  data: T;
+};
+
+type GamificationDashboardResponse = {
+  hearts: UserHeartsResponse;
+  streak: UserStreakResponse;
+  characters: unknown[];
+  stats?: {
+    today?: {
+      xpEarned?: number;
+      lessonsCompleted?: number;
+      quizzesCompleted?: number;
+    };
+  };
+};
+
+// ---------- Gamification ----------
+
+export async function getHearts(
+  token?: string,
+): Promise<UserHeartsResponse> {
+  const response = await apiRequest<ApiDataResponse<UserHeartsResponse>>(
+    "/gamification/hearts",
+    { token: token ?? getStoredAuthToken() },
+  );
+  return response.data;
+}
+
+export async function recoverHearts(
+  token?: string,
+): Promise<UserHeartsResponse> {
+  const response = await apiRequest<ApiDataResponse<UserHeartsResponse>>(
+    "/gamification/hearts/recover",
+    {
+      token: token ?? getStoredAuthToken(),
+      method: "POST",
+    },
+  );
+  return response.data;
+}
+
+export async function getStreak(
+  token?: string,
+): Promise<UserStreakResponse> {
+  const response = await apiRequest<ApiDataResponse<UserStreakResponse>>(
+    "/gamification/streaks",
+    { token: token ?? getStoredAuthToken() },
+  );
+  return response.data;
+}
+
+export async function getGamificationSummary(
+  token?: string,
+): Promise<GamificationSummary> {
+  const response = await apiRequest<
+    ApiDataResponse<GamificationDashboardResponse>
+  >("/gamification/dashboard", { token: token ?? getStoredAuthToken() });
+  const { hearts, streak, characters, stats } = response.data;
+
+  return {
+    hearts: {
+      current: hearts.hearts,
+      max: hearts.maxHearts,
+      isPremium: hearts.isPremium,
+      nextRecoveryAt: hearts.nextRecoveryAt,
+      timeUntilNextHeartMs: hearts.timeUntilNextHeartMs,
+    },
+    streak: {
+      current: streak.current,
+      longest: streak.longest,
+      isFrozen: streak.isFrozen,
+      freezesAvailable: streak.freezesAvailable,
+    },
+    characters: {
+      unlocked: characters.length,
+    },
+    challenges: {
+      totalChallenges: 0,
+      completedToday: 0,
+      xpClaimedToday: stats?.today?.xpEarned ?? 0,
+    },
+  };
+}
+
+export async function getChallenges(): Promise<ChallengesResponse> {
+  return {
+    total: 0,
+    challenges: [],
+  };
 }
 
 // ---------- Content admin (ADMIN / MODERATOR) ----------

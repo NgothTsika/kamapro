@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd server && yarn generate && yarn build",
+  "buildCommand": "yarn generate && yarn build",
   "outputDirectory": "server/dist",
   "framework": "express",
   "functions": {

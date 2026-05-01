@@ -35,11 +35,11 @@ const getBackendUrl = () => {
     process.env.NEXT_PUBLIC_API_URL ||
     process.env.API_URL_DEPLOYED ||
     process.env.API_URL_LOCAL ||
-    "http://localhost:4000";
+    "https://kama-learn-api.vercel.app";
 
-  if (!backendUrl || backendUrl === "http://localhost:4000") {
+  if (!backendUrl || backendUrl === "https://kama-learn-api.vercel.app") {
     console.log(
-      "[API PROXY] Using default local backend: http://localhost:4000",
+      "[API PROXY] Using default local backend: https://kama-learn-api.vercel.app",
     );
   } else {
     console.log(

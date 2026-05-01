@@ -69,7 +69,7 @@ export default function HeartsManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
-  const [restoreAmount, setRestoreAmount] = useState(5);
+  const [restoreAmount, setRestoreAmount] = useState(3);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [configuredMaxHearts, setConfiguredMaxHearts] = useState<number | null>(
     null,
@@ -129,7 +129,7 @@ export default function HeartsManagement() {
 
     try {
       setRestoring("all");
-      const result = await bulkRestoreHearts(token, configuredMaxHearts ?? 5);
+      const result = await bulkRestoreHearts(token, configuredMaxHearts ?? 3);
 
       toast.success(`Restored hearts for ${result.usersUpdated} users`);
       loadHearts();
@@ -252,18 +252,7 @@ export default function HeartsManagement() {
             <RotateCcw className="size-4" />
             {restoring === "all"
               ? "Restoring..."
-              : `Restore All to ${configuredMaxHearts ?? 5} Hearts`}
-          </Button>
-          <Button
-            onClick={syncAllHeartsWithSettings}
-            disabled={restoring !== null}
-            variant="outline"
-            className="gap-2"
-          >
-            <RefreshCw className="size-4" />
-            {restoring === "sync"
-              ? "Syncing..."
-              : "Sync All Hearts with Settings"}
+              : `Restore All to ${configuredMaxHearts ?? 3} Hearts`}
           </Button>
         </CardContent>
       </Card>

@@ -6,6 +6,7 @@ import type {
   AdminCharacterCollectionSummary,
   AdminCharacterCollectionDetail,
   AdminLessonCollectionSummary,
+  AdminRoadmapLevel,
   AdminLessonCollectionDetail,
   AdminLessonDetail,
   AdminLessonSummary,
@@ -1790,6 +1791,65 @@ export async function deleteLessonCollection(
   collectionId: string,
 ): Promise<void> {
   await apiRequest<void>(`/content/admin/lesson-collections/${collectionId}`, {
+    token,
+    method: "DELETE",
+  });
+}
+
+export async function getRoadmapLevels(
+  token: string,
+): Promise<AdminRoadmapLevel[]> {
+  const data = await apiRequest<{ levels: AdminRoadmapLevel[] }>(
+    "/content/admin/roadmap-levels",
+    { token },
+  );
+  return data.levels;
+}
+
+export async function createRoadmapLevel(
+  token: string,
+  payload: {
+    title: string;
+    description?: string | null;
+    symbol?: string | null;
+    color?: string | null;
+    order?: number;
+    isPublished?: boolean;
+    lessonIds: string[];
+  },
+): Promise<AdminRoadmapLevel> {
+  const data = await apiRequest<{ level: AdminRoadmapLevel }>(
+    "/content/admin/roadmap-levels",
+    { token, method: "POST", body: payload },
+  );
+  return data.level;
+}
+
+export async function updateRoadmapLevel(
+  token: string,
+  levelId: string,
+  payload: Partial<{
+    title: string;
+    description: string | null;
+    symbol: string | null;
+    color: string | null;
+    order: number;
+    isPublished: boolean;
+    lessonIds: string[];
+  }>,
+): Promise<AdminRoadmapLevel> {
+  const data = await apiRequest<{ level: AdminRoadmapLevel }>(
+    `/content/admin/roadmap-levels/${levelId}`,
+    { token, method: "PATCH", body: payload },
+  );
+  return data.level;
+}
+
+export async function deleteRoadmapLevel(
+  token: string,
+  levelId: string,
+): Promise<void> {
+  await apiRequest<void>(`/content/admin/roadmap-levels/${levelId}`, {
     token,
     method: "DELETE",
   });

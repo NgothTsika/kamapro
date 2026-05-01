@@ -8,6 +8,7 @@ import {
   Users,
   HelpCircle,
   Box,
+  Map,
 } from "lucide-react";
 import {
   Card,
@@ -53,6 +54,12 @@ const links = [
     description: "Create curated collections of lessons for learning.",
     href: "/content/collections",
     icon: Box,
+  },
+  {
+    title: "Roadmap",
+    description: "Create ordered levels and assign lessons to each path step.",
+    href: "/content/roadmap",
+    icon: Map,
   },
 ];
 

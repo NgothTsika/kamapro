@@ -625,6 +625,31 @@ export type AdminLessonCollectionDetail = AdminLessonCollectionSummary & {
   }>;
 };
 
+export type AdminRoadmapLesson = {
+  id: string;
+  slug: string;
+  title: string;
+  coverImage?: string | null;
+  xpReward?: number | null;
+  published: boolean;
+  roadmapItemId: string;
+  order: number;
+};
+
+export type AdminRoadmapLevel = {
+  id: string;
+  title: string;
+  description?: string | null;
+  symbol?: string | null;
+  color?: string | null;
+  order: number;
+  isPublished: boolean;
+  lessonCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lessons: AdminRoadmapLesson[];
+};
+
 // ---------- COLLECTIONS ADMIN TYPES ----------
 export type AdminCollectionSummary = {
   id: string;

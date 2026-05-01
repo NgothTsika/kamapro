@@ -211,3 +211,4 @@ if (process.env.VERCEL !== "1") {
 // 1. Vercel serverless functions (api/index.ts will wrap this)
 // 2. Other environments where the app is used as middleware
 export default app;
+

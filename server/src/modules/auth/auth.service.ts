@@ -1,5 +1,5 @@
 import { OAuth2Client } from "google-auth-library";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+// Remove the static jose imports – we'll use dynamic import inside the function
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { User } from "@prisma/client";
@@ -16,9 +16,7 @@ type OAuthProfile = {
 const googleClient = env.GOOGLE_CLIENT_ID
   ? new OAuth2Client(env.GOOGLE_CLIENT_ID)
   : null;
-const appleJwks = createRemoteJWKSet(
-  new URL("https://appleid.apple.com/auth/keys"),
-);
+// Remove the top-level appleJwks creation – we'll do it dynamically
 
 const oauthPasswordPlaceholder = "__OAUTH__";
 
@@ -127,6 +125,14 @@ export const loginWithApple = async (
   if (!env.APPLE_CLIENT_ID) {
     throw new HttpError(500, "Apple auth is not configured on the server");
   }
+
+  // Dynamic import of jose (ESM-only package) – works in CommonJS
+  const { createRemoteJWKSet, jwtVerify } = await import('jose');
+
+  const appleJwks = createRemoteJWKSet(
+    new URL("https://appleid.apple.com/auth/keys"),
+  );
+
   const verification = await jwtVerify(idToken, appleJwks, {
     issuer: "https://appleid.apple.com",
     audience: env.APPLE_CLIENT_ID,

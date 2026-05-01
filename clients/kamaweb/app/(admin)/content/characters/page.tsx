@@ -283,7 +283,6 @@ export default function CharactersPage() {
                       ? row.categories.map((cc) => cc.category.name).join(", ")
                       : "—"}
                   </TableCell>
-                  <TableCell>{row.unlockLesson?.title ?? "—"}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" size="icon-sm" asChild>

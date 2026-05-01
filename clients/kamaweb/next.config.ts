@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
         port: "",
         pathname: "/uc?export=view&id=**",
       },
+      {
+        protocol: "https",
+        hostname: "lh3.googleusercontent.com",
+      },
     ],
   },
 };

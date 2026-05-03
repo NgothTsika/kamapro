@@ -997,6 +997,7 @@ contentAdminRouter.get(
 
     const step = await prisma.chapterStep.findUnique({
       where: { id: stepId },
+      select: await chapterStepsService.getChapterStepSelect(),
     });
 
     if (!step) throw new HttpError(404, "Step not found");
@@ -1024,6 +1025,7 @@ contentAdminRouter.patch(
     if (body.content || body.type) {
       const existingStep = await prisma.chapterStep.findUnique({
         where: { id: stepId },
+        select: await chapterStepsService.getChapterStepSelect(),
       });
       if (!existingStep) throw new HttpError(404, "Step not found");
 

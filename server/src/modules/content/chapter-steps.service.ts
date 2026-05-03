@@ -1,6 +1,59 @@
 import { prisma } from "../../lib/prisma";
 import type { ChapterStep } from "@prisma/client";
 
+let chapterStepMediaColumnsPromise: Promise<{
+  backgroundMusic: boolean;
+  soundEffects: boolean;
+  narration: boolean;
+}> | null = null;
+
+export async function getChapterStepMediaColumns() {
+  if (!chapterStepMediaColumnsPromise) {
+    chapterStepMediaColumnsPromise = prisma
+      .$queryRaw<Array<{ column_name: string }>>`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'ChapterStep'
+          AND column_name IN ('backgroundMusic', 'soundEffects', 'narration')
+      `
+      .then((rows) => {
+        const names = new Set(rows.map((row) => row.column_name));
+        return {
+          backgroundMusic: names.has("backgroundMusic"),
+          soundEffects: names.has("soundEffects"),
+          narration: names.has("narration"),
+        };
+      })
+      .catch(() => ({
+        backgroundMusic: false,
+        soundEffects: false,
+        narration: false,
+      }));
+  }
+
+  return chapterStepMediaColumnsPromise;
+}
+
+export async function getChapterStepSelect() {
+  const mediaColumns = await getChapterStepMediaColumns();
+
+  return {
+    id: true,
+    chapterId: true,
+    order: true,
+    type: true,
+    content: true,
+    mediaUrl: true,
+    mediaType: true,
+    ...(mediaColumns.backgroundMusic ? { backgroundMusic: true } : {}),
+    ...(mediaColumns.soundEffects ? { soundEffects: true } : {}),
+    ...(mediaColumns.narration ? { narration: true } : {}),
+    createdAt: true,
+    updatedAt: true,
+  } as const;
+}
+
 const htmlToText = (value: string) =>
   value
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -64,7 +117,7 @@ function getNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-export function serializeChapterStep(step: ChapterStep) {
+export function serializeChapterStep(step: Partial<ChapterStep> & Record<string, any>) {
   const content = withComputedPlainText((step.content ?? {}) as Record<string, unknown>);
   const backgroundMusic = getRecord((step as any).backgroundMusic);
   const narration = getRecord((step as any).narration);
@@ -121,6 +174,7 @@ export async function createChapterStep(
 
   if (!chapter) throw new Error("Chapter not found");
 
+  const mediaColumns = await getChapterStepMediaColumns();
   return prisma.chapterStep.create({
     data: {
       chapterId,
@@ -129,10 +183,13 @@ export async function createChapterStep(
       content: withComputedPlainText(data.content) as any,
       mediaUrl: data.mediaUrl,
       mediaType: data.mediaType,
-      backgroundMusic: data.backgroundMusic as any,
-      soundEffects: data.soundEffects as any,
-      narration: data.narration as any,
+      ...(mediaColumns.backgroundMusic
+        ? { backgroundMusic: data.backgroundMusic as any }
+        : {}),
+      ...(mediaColumns.soundEffects ? { soundEffects: data.soundEffects as any } : {}),
+      ...(mediaColumns.narration ? { narration: data.narration as any } : {}),
     },
+    select: await getChapterStepSelect(),
   });
 }
 
@@ -152,19 +209,27 @@ export async function updateChapterStep(
     narration: Record<string, unknown> | null;
   }>,
 ): Promise<ChapterStep> {
+  const mediaColumns = await getChapterStepMediaColumns();
   const updateData: any = {};
   if (data.order !== undefined) updateData.order = data.order;
   if (data.type) updateData.type = data.type;
   if (data.content) updateData.content = withComputedPlainText(data.content);
   if (data.mediaUrl !== undefined) updateData.mediaUrl = data.mediaUrl;
   if (data.mediaType) updateData.mediaType = data.mediaType;
-  if (data.backgroundMusic !== undefined) updateData.backgroundMusic = data.backgroundMusic;
-  if (data.soundEffects !== undefined) updateData.soundEffects = data.soundEffects;
-  if (data.narration !== undefined) updateData.narration = data.narration;
+  if (mediaColumns.backgroundMusic && data.backgroundMusic !== undefined) {
+    updateData.backgroundMusic = data.backgroundMusic;
+  }
+  if (mediaColumns.soundEffects && data.soundEffects !== undefined) {
+    updateData.soundEffects = data.soundEffects;
+  }
+  if (mediaColumns.narration && data.narration !== undefined) {
+    updateData.narration = data.narration;
+  }
 
   return prisma.chapterStep.update({
     where: { id: stepId },
     data: updateData,
+    select: await getChapterStepSelect(),
   });
 }
 
@@ -183,6 +248,7 @@ export async function deleteChapterStep(stepId: string): Promise<void> {
   // Delete the step
   await prisma.chapterStep.delete({
     where: { id: stepId },
+    select: { id: true },
   });
 }
 
@@ -194,11 +260,13 @@ export async function reorderChapterSteps(
   stepIds: string[],
 ): Promise<ChapterStep[]> {
   const updated = [];
+  const chapterStepSelect = await getChapterStepSelect();
 
   for (let i = 0; i < stepIds.length; i++) {
     const step = await prisma.chapterStep.update({
       where: { id: stepIds[i] },
       data: { order: i },
+      select: chapterStepSelect,
     });
     updated.push(step);
   }
@@ -213,7 +281,7 @@ export async function getChapterWithSteps(chapterId: string) {
   return prisma.chapter.findUnique({
     where: { id: chapterId },
     include: {
-      steps: { orderBy: { order: "asc" } },
+      steps: { orderBy: { order: "asc" }, select: await getChapterStepSelect() },
     },
   });
 }

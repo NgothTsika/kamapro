@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma";
+import * as stepsService from "./chapter-steps.service";
 import type {
   UserChapterProgress,
   UserLessonProgress,
@@ -64,16 +65,15 @@ export async function advanceChapterStep(
   chapterId: string,
   fromStepIndex: number,
 ): Promise<UserChapterProgress> {
-  // Get chapter to validate step index
-  const chapter = await prisma.chapter.findUnique({
-    where: { id: chapterId },
-    include: { steps: { orderBy: { order: "asc" } } },
-  });
+  const [chapter, stepCount] = await Promise.all([
+    prisma.chapter.findUnique({ where: { id: chapterId } }),
+    prisma.chapterStep.count({ where: { chapterId } }),
+  ]);
 
   if (!chapter) throw new Error("Chapter not found");
 
   const nextIndex = fromStepIndex + 1;
-  const isComplete = nextIndex >= chapter.steps.length;
+  const isComplete = nextIndex >= stepCount;
 
   const updated = await prisma.userChapterProgress.update({
     where: {
@@ -160,13 +160,14 @@ export async function getUserLessonProgressWithDetails(
   userId: string,
   lessonId: string,
 ) {
+  const chapterStepSelect = await stepsService.getChapterStepSelect();
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
     include: {
       chapters: {
         orderBy: { order: "asc" },
         include: {
-          steps: { orderBy: { order: "asc" } },
+          steps: { orderBy: { order: "asc" }, select: chapterStepSelect },
           chapterProgress: {
             where: { userId },
           },

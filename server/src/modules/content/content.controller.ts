@@ -900,6 +900,7 @@ contentRouter.get(
     const paramsSchema = z.object({ lessonId: z.string().min(1) });
     const { lessonId } = paramsSchema.parse(req.params);
     const quizChapterIdEnabled = await hasQuizChapterIdColumn();
+    const chapterStepSelect = await stepsService.getChapterStepSelect();
 
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
@@ -907,7 +908,7 @@ contentRouter.get(
         chapters: {
           orderBy: { order: "asc" },
           include: {
-            steps: { orderBy: { order: "asc" } },
+            steps: { orderBy: { order: "asc" }, select: chapterStepSelect },
           },
         },
       },
@@ -919,10 +920,10 @@ contentRouter.get(
         lesson: {
           ...lesson,
           chapters: lesson.chapters.map((chapter) => ({
-          ...chapter,
-          steps: chapter.steps.map(stepsService.serializeChapterStep),
-          quizzes: [],
-        })),
+            ...chapter,
+            steps: chapter.steps.map(stepsService.serializeChapterStep),
+            quizzes: [],
+          })),
         },
       });
     }
@@ -955,11 +956,12 @@ contentRouter.get(
     const paramsSchema = z.object({ chapterId: z.string().min(1) });
     const { chapterId } = paramsSchema.parse(req.params);
     const quizChapterIdEnabled = await hasQuizChapterIdColumn();
+    const chapterStepSelect = await stepsService.getChapterStepSelect();
 
     const chapter = await prisma.chapter.findUnique({
       where: { id: chapterId },
       include: {
-        steps: { orderBy: { order: "asc" } },
+        steps: { orderBy: { order: "asc" }, select: chapterStepSelect },
       },
     });
 
@@ -1067,6 +1069,7 @@ contentRouter.post(
     // Verify step exists
     const step = await prisma.chapterStep.findUnique({
       where: { id: stepId },
+      select: { id: true },
     });
 
     if (!step) throw new HttpError(404, "Step not found");

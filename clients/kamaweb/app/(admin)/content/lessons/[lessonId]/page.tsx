@@ -229,6 +229,7 @@ export default function EditLessonPage() {
     setChapterForm({
       title: "",
       content: "",
+      coverImage: "",
       order: "0",
       mediaType: "",
       mediaUrl: "",

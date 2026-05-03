@@ -7,8 +7,10 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  Music,
   Plus,
   Trash2,
+  Volume2,
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -64,13 +66,25 @@ type ChoiceOptionDraft = {
   nextStepId: string;
 };
 
+type SoundEffectDraft = {
+  url: string;
+  trigger: "onAppear" | "onTap" | "onComplete";
+  volume: string;
+};
+
 type ChapterQuizType = "true_false" | "multiple_choice" | "image_choice";
 
 type StepFormState = {
   type: StepType;
   order: string;
   mediaUrl: string;
-  mediaType: "image" | "video" | "none";
+  mediaType: "image" | "video" | "audio" | "none";
+  backgroundMusicUrl: string;
+  backgroundMusicVolume: string;
+  narrationUrl: string;
+  narrationSpeed: string;
+  narrationVolume: string;
+  soundEffects: SoundEffectDraft[];
   title: string;
   body: string;
   audioUrl: string;
@@ -179,6 +193,12 @@ function createDefaultStepForm(
     order: String(order),
     mediaUrl: "",
     mediaType: type === "IMAGE_FULL" ? "image" : "none",
+    backgroundMusicUrl: "",
+    backgroundMusicVolume: "0.3",
+    narrationUrl: "",
+    narrationSpeed: "1",
+    narrationVolume: "1",
+    soundEffects: [],
     title: "",
     body: "",
     audioUrl: "",
@@ -209,6 +229,47 @@ function trimLines(value: string) {
     .filter(Boolean);
 }
 
+function toVolumeString(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : String(fallback);
+}
+
+function withStepAudioForm(step: ChapterStep, base: StepFormState): StepFormState {
+  const backgroundMusic = step.backgroundMusic ?? null;
+  const narration = step.narration ?? null;
+
+  return {
+    ...base,
+    backgroundMusicUrl: String(
+      backgroundMusic?.url ?? step.backgroundMusicUrl ?? "",
+    ),
+    backgroundMusicVolume: toVolumeString(
+      backgroundMusic?.volume ?? step.backgroundMusicVolume,
+      0.3,
+    ),
+    narrationUrl: String(narration?.url ?? step.narrationUrl ?? ""),
+    narrationSpeed: toVolumeString(
+      narration?.defaultSpeed ?? step.narrationSpeed,
+      1,
+    ),
+    narrationVolume: toVolumeString(
+      narration?.defaultVolume ?? step.narrationVolume,
+      1,
+    ),
+    soundEffects: Array.isArray(step.soundEffects)
+      ? step.soundEffects.map((effect) => ({
+          url: String(effect?.url ?? ""),
+          trigger:
+            effect?.trigger === "onTap" || effect?.trigger === "onComplete"
+              ? effect.trigger
+              : "onAppear",
+          volume: toVolumeString(effect?.volume, 0.5),
+        }))
+      : [],
+  };
+}
+
 function normalizeChapterQuizType(content: Record<string, unknown>): ChapterQuizType {
   if (content.quizType === "true_false") return "true_false";
   if (content.quizType === "image_choice") return "image_choice";
@@ -233,7 +294,7 @@ function normalizeChapterQuizType(content: Record<string, unknown>): ChapterQuiz
 }
 
 function toStepForm(step: ChapterStep): StepFormState {
-  const base = createDefaultStepForm(step.type, step.order);
+  const base = withStepAudioForm(step, createDefaultStepForm(step.type, step.order));
   const content = step.content ?? {};
 
   if (step.type === "TEXT") {
@@ -245,7 +306,9 @@ function toStepForm(step: ChapterStep): StepFormState {
   }
 
   if (step.type === "TEXT_AUDIO") {
-    const audioUrl = String(step.mediaUrl ?? content.audioUrl ?? "");
+    const audioUrl = String(
+      step.mediaUrl ?? content.audioUrl ?? step.narration?.url ?? step.narrationUrl ?? "",
+    );
     return {
       ...base,
       title: String(content.title ?? ""),
@@ -627,11 +690,109 @@ export default function ChapterDetailPage() {
     }));
   }
 
+  function addSoundEffect() {
+    setStepForm((current) => ({
+      ...current,
+      soundEffects: [
+        ...current.soundEffects,
+        { url: "", trigger: "onAppear", volume: "0.5" },
+      ],
+    }));
+  }
+
+  function updateSoundEffect(
+    index: number,
+    field: keyof SoundEffectDraft,
+    value: string,
+  ) {
+    setStepForm((current) => ({
+      ...current,
+      soundEffects: current.soundEffects.map((effect, effectIndex) =>
+        effectIndex !== index
+          ? effect
+          : field === "trigger"
+            ? { ...effect, trigger: value as SoundEffectDraft["trigger"] }
+            : field === "url"
+              ? { ...effect, url: value }
+              : { ...effect, volume: value },
+      ),
+    }));
+  }
+
+  function removeSoundEffect(index: number) {
+    setStepForm((current) => ({
+      ...current,
+      soundEffects: current.soundEffects.filter(
+        (_, effectIndex) => effectIndex !== index,
+      ),
+    }));
+  }
+
+  function readBoundedNumber(
+    value: string,
+    label: string,
+    min: number,
+    max: number,
+  ) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+      throw new Error(`${label} must be between ${min} and ${max}`);
+    }
+    return parsed;
+  }
+
+  function readVolume(value: string, label: string) {
+    return readBoundedNumber(value, label, 0, 1);
+  }
+
+  function buildStepAudioPayload() {
+    const backgroundMusicUrl = stepForm.backgroundMusicUrl.trim();
+    const narrationUrl = stepForm.narrationUrl.trim();
+    const soundEffects = stepForm.soundEffects
+      .map((effect) => ({
+        url: effect.url.trim(),
+        trigger: effect.trigger,
+        volume: effect.url.trim()
+          ? readVolume(effect.volume, "Sound effect volume")
+          : 0.5,
+      }))
+      .filter((effect) => effect.url);
+
+    return {
+      backgroundMusic: backgroundMusicUrl
+        ? {
+            url: backgroundMusicUrl,
+            volume: readVolume(
+              stepForm.backgroundMusicVolume,
+              "Background music volume",
+            ),
+          }
+        : null,
+      soundEffects: soundEffects.length ? soundEffects : null,
+      narration: narrationUrl
+        ? {
+            url: narrationUrl,
+            defaultSpeed: readBoundedNumber(
+              stepForm.narrationSpeed,
+              "Narration speed",
+              0.5,
+              2,
+            ),
+            defaultVolume: readVolume(
+              stepForm.narrationVolume,
+              "Narration volume",
+            ),
+          }
+        : null,
+    };
+  }
+
   function buildStepPayload() {
     const order = Number(stepForm.order);
     if (!Number.isFinite(order) || order < 0) {
       throw new Error("Step order must be 0 or greater");
     }
+    const audioPayload = buildStepAudioPayload();
 
     if (stepForm.type === "TEXT") {
       if (!stepForm.body.trim()) {
@@ -647,6 +808,7 @@ export default function ChapterDetailPage() {
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
+        ...audioPayload,
       };
     }
 
@@ -654,11 +816,11 @@ export default function ChapterDetailPage() {
       if (!stepForm.body.trim()) {
         throw new Error("Narrated steps need body text");
       }
-      if (!stepForm.audioUrl.trim()) {
+      const audioUrl = stepForm.audioUrl.trim() || stepForm.narrationUrl.trim();
+      if (!audioUrl) {
         throw new Error("Narrated steps need an audio URL");
       }
 
-      const audioUrl = stepForm.audioUrl.trim();
       return {
         order,
         type: stepForm.type,
@@ -668,7 +830,19 @@ export default function ChapterDetailPage() {
           audioUrl,
         },
         mediaUrl: audioUrl,
-        mediaType: "none" as const,
+        mediaType: "audio" as const,
+        narration: audioPayload.narration ?? {
+          url: audioUrl,
+          defaultSpeed: readBoundedNumber(
+            stepForm.narrationSpeed,
+            "Narration speed",
+            0.5,
+            2,
+          ),
+          defaultVolume: readVolume(stepForm.narrationVolume, "Narration volume"),
+        },
+        backgroundMusic: audioPayload.backgroundMusic,
+        soundEffects: audioPayload.soundEffects,
       };
     }
 
@@ -690,6 +864,7 @@ export default function ChapterDetailPage() {
         },
         mediaUrl: imageUrl,
         mediaType: "image" as const,
+        ...audioPayload,
       };
     }
 
@@ -711,6 +886,7 @@ export default function ChapterDetailPage() {
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
+        ...audioPayload,
       };
     }
 
@@ -741,6 +917,7 @@ export default function ChapterDetailPage() {
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
+        ...audioPayload,
       };
     }
 
@@ -797,6 +974,7 @@ export default function ChapterDetailPage() {
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
+        ...audioPayload,
       };
     }
 
@@ -812,6 +990,7 @@ export default function ChapterDetailPage() {
         content: { points },
         mediaUrl: undefined,
         mediaType: "none" as const,
+        ...audioPayload,
       };
     }
 
@@ -823,6 +1002,7 @@ export default function ChapterDetailPage() {
       },
       mediaUrl: undefined,
       mediaType: "none" as const,
+      ...audioPayload,
     };
   }
 
@@ -1088,6 +1268,12 @@ export default function ChapterDetailPage() {
                       return {
                         ...createDefaultStepForm(nextType, Number(current.order) || 0),
                         order: current.order,
+                        backgroundMusicUrl: current.backgroundMusicUrl,
+                        backgroundMusicVolume: current.backgroundMusicVolume,
+                        narrationUrl: current.narrationUrl,
+                        narrationSpeed: current.narrationSpeed,
+                        narrationVolume: current.narrationVolume,
+                        soundEffects: current.soundEffects,
                       };
                     })
                   }
@@ -1116,6 +1302,224 @@ export default function ChapterDetailPage() {
                     }))
                   }
                 />
+              </div>
+            </div>
+
+            <div className="grid gap-4 rounded-lg border p-4">
+              <div className="flex items-center gap-2">
+                <Volume2 className="h-4 w-4 text-primary" />
+                <Label>Audio & Effects</Label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-[1fr_8rem]">
+                <div className="space-y-2">
+                  <Label htmlFor="backgroundMusicUrl">Background Music</Label>
+                  <FileUpload
+                    bucket="chapter-media"
+                    folder={lessonId}
+                    accepts="audio"
+                    currentValue={stepForm.backgroundMusicUrl}
+                    onUploadComplete={(url) =>
+                      setStepForm((current) => ({
+                        ...current,
+                        backgroundMusicUrl: url,
+                      }))
+                    }
+                  />
+                  <Input
+                    id="backgroundMusicUrl"
+                    value={stepForm.backgroundMusicUrl}
+                    onChange={(e) =>
+                      setStepForm((current) => ({
+                        ...current,
+                        backgroundMusicUrl: e.target.value,
+                      }))
+                    }
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="backgroundMusicVolume">Volume</Label>
+                  <Input
+                    id="backgroundMusicVolume"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={stepForm.backgroundMusicVolume}
+                    onChange={(e) =>
+                      setStepForm((current) => ({
+                        ...current,
+                        backgroundMusicVolume: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-[1fr_8rem_8rem]">
+                <div className="space-y-2">
+                  <Label htmlFor="narrationUrl">Narration</Label>
+                  <FileUpload
+                    bucket="chapter-media"
+                    folder={lessonId}
+                    accepts="audio"
+                    currentValue={stepForm.narrationUrl}
+                    onUploadComplete={(url) =>
+                      setStepForm((current) => ({
+                        ...current,
+                        narrationUrl: url,
+                      }))
+                    }
+                  />
+                  <Input
+                    id="narrationUrl"
+                    value={stepForm.narrationUrl}
+                    onChange={(e) =>
+                      setStepForm((current) => ({
+                        ...current,
+                        narrationUrl: e.target.value,
+                      }))
+                    }
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="narrationSpeed">Speed</Label>
+                  <Input
+                    id="narrationSpeed"
+                    type="number"
+                    min="0.5"
+                    max="2"
+                    step="0.1"
+                    value={stepForm.narrationSpeed}
+                    onChange={(e) =>
+                      setStepForm((current) => ({
+                        ...current,
+                        narrationSpeed: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="narrationVolume">Volume</Label>
+                  <Input
+                    id="narrationVolume"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={stepForm.narrationVolume}
+                    onChange={(e) =>
+                      setStepForm((current) => ({
+                        ...current,
+                        narrationVolume: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Music className="h-4 w-4 text-primary" />
+                    <Label>Sound Effects</Label>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={addSoundEffect}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add effect
+                  </Button>
+                </div>
+
+                {stepForm.soundEffects.length === 0 ? (
+                  <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                    No sound effects added.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {stepForm.soundEffects.map((effect, index) => (
+                      <div
+                        key={`${index}-${effect.trigger}`}
+                        className="grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_9rem_7rem_auto]"
+                      >
+                        <div className="space-y-2">
+                          <Label htmlFor={`sound-effect-url-${index}`}>
+                            Effect URL
+                          </Label>
+                          <FileUpload
+                            bucket="chapter-media"
+                            folder={lessonId}
+                            accepts="audio"
+                            currentValue={effect.url}
+                            onUploadComplete={(url) =>
+                              updateSoundEffect(index, "url", url)
+                            }
+                          />
+                          <Input
+                            id={`sound-effect-url-${index}`}
+                            value={effect.url}
+                            onChange={(e) =>
+                              updateSoundEffect(index, "url", e.target.value)
+                            }
+                            placeholder="https://..."
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`sound-effect-trigger-${index}`}>
+                            Trigger
+                          </Label>
+                          <NativeSelect
+                            id={`sound-effect-trigger-${index}`}
+                            value={effect.trigger}
+                            onChange={(e) =>
+                              updateSoundEffect(
+                                index,
+                                "trigger",
+                                e.target.value as SoundEffectDraft["trigger"],
+                              )
+                            }
+                          >
+                            <NativeSelectOption value="onAppear">
+                              On appear
+                            </NativeSelectOption>
+                            <NativeSelectOption value="onTap">
+                              On tap
+                            </NativeSelectOption>
+                            <NativeSelectOption value="onComplete">
+                              On complete
+                            </NativeSelectOption>
+                          </NativeSelect>
+                        </div>
+                        <div>
+                          <Label htmlFor={`sound-effect-volume-${index}`}>
+                            Volume
+                          </Label>
+                          <Input
+                            id={`sound-effect-volume-${index}`}
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={effect.volume}
+                            onChange={(e) =>
+                              updateSoundEffect(index, "volume", e.target.value)
+                            }
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeSoundEffect(index)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

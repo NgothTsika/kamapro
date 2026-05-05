@@ -103,6 +103,10 @@ export const AdvanceChapterSchema = z.object({
 
 export type AdvanceChapterRequest = z.infer<typeof AdvanceChapterSchema>;
 
+export const SetChapterStepIndexSchema = z.object({
+  stepIndex: z.number().int().nonnegative(),
+});
+
 // Reorder steps
 export const ReorderStepsSchema = z.object({
   stepIds: z.array(z.string()),

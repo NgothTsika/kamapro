@@ -90,6 +90,34 @@ export async function advanceChapterStep(
 }
 
 /**
+ * Move chapter progress to a specific step. Used by the reader back button.
+ */
+export async function setChapterStepIndex(
+  userId: string,
+  chapterId: string,
+  stepIndex: number,
+): Promise<UserChapterProgress> {
+  const [chapter, stepCount] = await Promise.all([
+    prisma.chapter.findUnique({ where: { id: chapterId } }),
+    prisma.chapterStep.count({ where: { chapterId } }),
+  ]);
+
+  if (!chapter) throw new Error("Chapter not found");
+  if (stepIndex >= stepCount) throw new Error("Step index out of range");
+
+  return prisma.userChapterProgress.update({
+    where: {
+      userId_chapterId: { userId, chapterId },
+    },
+    data: {
+      currentStepIndex: stepIndex,
+      completed: false,
+      completedAt: null,
+    },
+  });
+}
+
+/**
  * Complete chapter
  */
 export async function completeChapter(

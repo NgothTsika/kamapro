@@ -8,7 +8,11 @@ import { contentAdminRouter } from "./content-admin.controller";
 import { pollRouter } from "../quiz/poll.controller";
 import * as progressService from "./chapter-progress.service";
 import * as stepsService from "./chapter-steps.service";
-import { RespondToStepSchema, AdvanceChapterSchema } from "./chapter.types";
+import {
+  RespondToStepSchema,
+  AdvanceChapterSchema,
+  SetChapterStepIndexSchema,
+} from "./chapter.types";
 
 let quizChapterIdColumnPromise: Promise<boolean> | null = null;
 
@@ -1126,6 +1130,40 @@ contentRouter.post(
       userId,
       chapterId,
       fromStepIndex,
+    );
+
+    res.status(200).json({
+      success: true,
+      progress: updated,
+    });
+  }),
+);
+
+// Move to a specific step, mostly for previous-step navigation
+contentRouter.patch(
+  "/lessons/:lessonId/chapters/:chapterId/step-index",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const paramsSchema = z.object({
+      lessonId: z.string().min(1),
+      chapterId: z.string().min(1),
+    });
+    const { lessonId, chapterId } = paramsSchema.parse(req.params);
+    const userId = req.user!.id;
+    const { stepIndex } = SetChapterStepIndexSchema.parse(req.body);
+
+    const chapter = await prisma.chapter.findUnique({
+      where: { id: chapterId },
+    });
+
+    if (!chapter || chapter.lessonId !== lessonId) {
+      throw new HttpError(400, "Chapter does not belong to lesson");
+    }
+
+    const updated = await progressService.setChapterStepIndex(
+      userId,
+      chapterId,
+      stepIndex,
     );
 
     res.status(200).json({

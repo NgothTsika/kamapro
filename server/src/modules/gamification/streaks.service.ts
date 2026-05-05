@@ -119,29 +119,30 @@ export async function checkInDaily(
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
+  // Check if streak freeze is currently active and protecting the streak
+  const isFrozenNow =
+    userStreak.streakFrozenUntil && userStreak.streakFrozenUntil > now;
+
   let newCurrentStreak = userStreak.currentStreak;
 
-  // If last activity was yesterday, continue the streak
-  if (lastActivityDate?.getTime() === yesterday.getTime()) {
-    newCurrentStreak = userStreak.currentStreak + 1;
-  }
-  // If last activity was today or there was no activity, don't change streak
-  else if (lastActivityDate?.getTime() === today.getTime()) {
+  // Case 1: Activity today - maintain current streak
+  if (lastActivityDate?.getTime() === today.getTime()) {
     newCurrentStreak = userStreak.currentStreak;
   }
-  // If gap > 1 day, check if streak is frozen
-  else if (lastActivityDate && lastActivityDate < yesterday) {
-    if (userStreak.streakFrozenUntil && userStreak.streakFrozenUntil > now) {
-      // Streak is frozen, maintain it
+  // Case 2: Activity yesterday - continue/increment streak
+  else if (lastActivityDate?.getTime() === yesterday.getTime()) {
+    newCurrentStreak = userStreak.currentStreak + 1;
+  }
+  // Case 3: Gap > 1 day or no prior activity
+  else {
+    // If freeze is protecting the streak, maintain current count
+    if (isFrozenNow) {
       newCurrentStreak = userStreak.currentStreak;
-    } else {
-      // Streak is broken
+    }
+    // No freeze protection: reset to 1 (starting new streak)
+    else {
       newCurrentStreak = 1;
     }
-  }
-  // First activity ever
-  else {
-    newCurrentStreak = 1;
   }
 
   // Update longest streak if current exceeds it

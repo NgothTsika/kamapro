@@ -85,6 +85,7 @@ type StepFormState = {
   narrationSpeed: string;
   narrationVolume: string;
   soundEffects: SoundEffectDraft[];
+  paragraphSlidesText: string;
   title: string;
   body: string;
   audioUrl: string;
@@ -199,6 +200,7 @@ function createDefaultStepForm(
     narrationSpeed: "1",
     narrationVolume: "1",
     soundEffects: [],
+    paragraphSlidesText: "",
     title: "",
     body: "",
     audioUrl: "",
@@ -227,6 +229,22 @@ function trimLines(value: string) {
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseParagraphSlides(value: string) {
+  return value
+    .split(/\n\s*\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function slidesToText(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean)
+        .join("\n\n")
+    : "";
 }
 
 function toVolumeString(value: unknown, fallback: number) {
@@ -296,6 +314,7 @@ function normalizeChapterQuizType(content: Record<string, unknown>): ChapterQuiz
 function toStepForm(step: ChapterStep): StepFormState {
   const base = withStepAudioForm(step, createDefaultStepForm(step.type, step.order));
   const content = step.content ?? {};
+  base.paragraphSlidesText = slidesToText(content.paragraphSlides);
 
   if (step.type === "TEXT") {
     return {
@@ -793,6 +812,10 @@ export default function ChapterDetailPage() {
       throw new Error("Step order must be 0 or greater");
     }
     const audioPayload = buildStepAudioPayload();
+    const paragraphSlides = parseParagraphSlides(stepForm.paragraphSlidesText);
+    const optionalParagraphSlides = paragraphSlides.length
+      ? { paragraphSlides }
+      : {};
 
     if (stepForm.type === "TEXT") {
       if (!stepForm.body.trim()) {
@@ -805,6 +828,7 @@ export default function ChapterDetailPage() {
         content: {
           ...(stepForm.title.trim() ? { title: stepForm.title.trim() } : {}),
           body: stepForm.body.trim(),
+          ...optionalParagraphSlides,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -828,6 +852,7 @@ export default function ChapterDetailPage() {
           ...(stepForm.title.trim() ? { title: stepForm.title.trim() } : {}),
           body: stepForm.body.trim(),
           audioUrl,
+          ...optionalParagraphSlides,
         },
         mediaUrl: audioUrl,
         mediaType: "audio" as const,
@@ -861,6 +886,7 @@ export default function ChapterDetailPage() {
           ...(stepForm.description.trim()
             ? { description: stepForm.description.trim() }
             : {}),
+          ...optionalParagraphSlides,
         },
         mediaUrl: imageUrl,
         mediaType: "image" as const,
@@ -883,6 +909,7 @@ export default function ChapterDetailPage() {
         content: {
           question: stepForm.question.trim(),
           options,
+          ...optionalParagraphSlides,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -914,6 +941,7 @@ export default function ChapterDetailPage() {
             text: option.text,
             ...(option.nextStepId ? { nextStepId: option.nextStepId } : {}),
           })),
+          ...optionalParagraphSlides,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -971,6 +999,7 @@ export default function ChapterDetailPage() {
           ...(stepForm.explanation.trim()
             ? { explanation: stepForm.explanation.trim() }
             : {}),
+          ...optionalParagraphSlides,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -987,7 +1016,7 @@ export default function ChapterDetailPage() {
       return {
         order,
         type: stepForm.type,
-        content: { points },
+        content: { points, ...optionalParagraphSlides },
         mediaUrl: undefined,
         mediaType: "none" as const,
         ...audioPayload,
@@ -999,6 +1028,7 @@ export default function ChapterDetailPage() {
       type: stepForm.type,
       content: {
         ...(stepForm.buttonText.trim() ? { text: stepForm.buttonText.trim() } : {}),
+        ...optionalParagraphSlides,
       },
       mediaUrl: undefined,
       mediaType: "none" as const,
@@ -1274,6 +1304,7 @@ export default function ChapterDetailPage() {
                         narrationSpeed: current.narrationSpeed,
                         narrationVolume: current.narrationVolume,
                         soundEffects: current.soundEffects,
+                        paragraphSlidesText: current.paragraphSlidesText,
                       };
                     })
                   }
@@ -1521,6 +1552,27 @@ export default function ChapterDetailPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className="grid gap-3 rounded-lg border p-4">
+              <div>
+                <Label htmlFor="paragraphSlidesText">Paragraph Slides</Label>
+                <p className="text-xs text-muted-foreground">
+                  Optional. Separate each slide with a blank line.
+                </p>
+              </div>
+              <Textarea
+                id="paragraphSlidesText"
+                value={stepForm.paragraphSlidesText}
+                onChange={(e) =>
+                  setStepForm((current) => ({
+                    ...current,
+                    paragraphSlidesText: e.target.value,
+                  }))
+                }
+                placeholder={"First short paragraph slide.\n\nSecond paragraph slide.\n\nThird paragraph slide."}
+                rows={6}
+              />
             </div>
 
             {stepForm.type === "TEXT" && (

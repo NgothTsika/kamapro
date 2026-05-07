@@ -189,13 +189,20 @@ export function validateStepContent(
   type: ChapterStepType,
   content: any,
 ): boolean {
+  const hasParagraphSlides = (c: any) =>
+    Array.isArray(c.paragraphSlides) &&
+    c.paragraphSlides.some(
+      (slide: any) => typeof slide === "string" && slide.trim().length > 0,
+    );
   const validators: Record<ChapterStepType, (c: any) => boolean> = {
     TEXT: (c) =>
       (typeof c.body === "string" && c.body.trim().length > 0) ||
-      (Array.isArray(c.body) && c.body.length > 0),
+      (Array.isArray(c.body) && c.body.length > 0) ||
+      hasParagraphSlides(c),
     TEXT_AUDIO: (c) =>
       (typeof c.body === "string" && c.body.trim().length > 0) ||
-      (Array.isArray(c.body) && c.body.length > 0),
+      (Array.isArray(c.body) && c.body.length > 0) ||
+      hasParagraphSlides(c),
     IMAGE_FULL: (c) =>
       c.imageUrl &&
       typeof c.imageUrl === "string" &&

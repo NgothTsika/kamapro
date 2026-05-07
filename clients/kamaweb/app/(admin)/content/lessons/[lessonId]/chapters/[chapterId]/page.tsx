@@ -10,6 +10,7 @@ import {
   Music,
   Plus,
   Trash2,
+  Video,
   Volume2,
   WandSparkles,
 } from "lucide-react";
@@ -86,6 +87,7 @@ type StepFormState = {
   narrationVolume: string;
   soundEffects: SoundEffectDraft[];
   paragraphSlidesText: string;
+  videoUrl: string;
   title: string;
   body: string;
   audioUrl: string;
@@ -201,6 +203,7 @@ function createDefaultStepForm(
     narrationVolume: "1",
     soundEffects: [],
     paragraphSlidesText: "",
+    videoUrl: "",
     title: "",
     body: "",
     audioUrl: "",
@@ -236,6 +239,13 @@ function parseParagraphSlides(value: string) {
     .split(/\n\s*\n/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function appendParagraphSlide(current: string, nextSlide: string) {
+  const trimmedSlide = nextSlide.trim();
+  if (!trimmedSlide) return current;
+  const existing = parseParagraphSlides(current);
+  return [...existing, trimmedSlide].join("\n\n");
 }
 
 function slidesToText(value: unknown) {
@@ -315,6 +325,7 @@ function toStepForm(step: ChapterStep): StepFormState {
   const base = withStepAudioForm(step, createDefaultStepForm(step.type, step.order));
   const content = step.content ?? {};
   base.paragraphSlidesText = slidesToText(content.paragraphSlides);
+  base.videoUrl = String(content.videoUrl ?? "");
 
   if (step.type === "TEXT") {
     return {
@@ -816,10 +827,12 @@ export default function ChapterDetailPage() {
     const optionalParagraphSlides = paragraphSlides.length
       ? { paragraphSlides }
       : {};
+    const stepVideoUrl = stepForm.videoUrl.trim();
+    const optionalVideo = stepVideoUrl ? { videoUrl: stepVideoUrl } : {};
 
     if (stepForm.type === "TEXT") {
-      if (!stepForm.body.trim()) {
-        throw new Error("Story steps need body text");
+      if (!stepForm.body.trim() && paragraphSlides.length === 0) {
+        throw new Error("Story steps need body text or paragraph slides");
       }
 
       return {
@@ -827,8 +840,9 @@ export default function ChapterDetailPage() {
         type: stepForm.type,
         content: {
           ...(stepForm.title.trim() ? { title: stepForm.title.trim() } : {}),
-          body: stepForm.body.trim(),
+          ...(stepForm.body.trim() ? { body: stepForm.body.trim() } : {}),
           ...optionalParagraphSlides,
+          ...optionalVideo,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -837,8 +851,8 @@ export default function ChapterDetailPage() {
     }
 
     if (stepForm.type === "TEXT_AUDIO") {
-      if (!stepForm.body.trim()) {
-        throw new Error("Narrated steps need body text");
+      if (!stepForm.body.trim() && paragraphSlides.length === 0) {
+        throw new Error("Narrated steps need body text or paragraph slides");
       }
       const audioUrl = stepForm.audioUrl.trim() || stepForm.narrationUrl.trim();
       if (!audioUrl) {
@@ -850,9 +864,10 @@ export default function ChapterDetailPage() {
         type: stepForm.type,
         content: {
           ...(stepForm.title.trim() ? { title: stepForm.title.trim() } : {}),
-          body: stepForm.body.trim(),
+          ...(stepForm.body.trim() ? { body: stepForm.body.trim() } : {}),
           audioUrl,
           ...optionalParagraphSlides,
+          ...optionalVideo,
         },
         mediaUrl: audioUrl,
         mediaType: "audio" as const,
@@ -887,6 +902,7 @@ export default function ChapterDetailPage() {
             ? { description: stepForm.description.trim() }
             : {}),
           ...optionalParagraphSlides,
+          ...optionalVideo,
         },
         mediaUrl: imageUrl,
         mediaType: "image" as const,
@@ -910,6 +926,7 @@ export default function ChapterDetailPage() {
           question: stepForm.question.trim(),
           options,
           ...optionalParagraphSlides,
+          ...optionalVideo,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -942,6 +959,7 @@ export default function ChapterDetailPage() {
             ...(option.nextStepId ? { nextStepId: option.nextStepId } : {}),
           })),
           ...optionalParagraphSlides,
+          ...optionalVideo,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -1000,6 +1018,7 @@ export default function ChapterDetailPage() {
             ? { explanation: stepForm.explanation.trim() }
             : {}),
           ...optionalParagraphSlides,
+          ...optionalVideo,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -1016,7 +1035,7 @@ export default function ChapterDetailPage() {
       return {
         order,
         type: stepForm.type,
-        content: { points, ...optionalParagraphSlides },
+        content: { points, ...optionalParagraphSlides, ...optionalVideo },
         mediaUrl: undefined,
         mediaType: "none" as const,
         ...audioPayload,
@@ -1029,6 +1048,7 @@ export default function ChapterDetailPage() {
       content: {
         ...(stepForm.buttonText.trim() ? { text: stepForm.buttonText.trim() } : {}),
         ...optionalParagraphSlides,
+        ...optionalVideo,
       },
       mediaUrl: undefined,
       mediaType: "none" as const,
@@ -1305,6 +1325,7 @@ export default function ChapterDetailPage() {
                         narrationVolume: current.narrationVolume,
                         soundEffects: current.soundEffects,
                         paragraphSlidesText: current.paragraphSlidesText,
+                        videoUrl: current.videoUrl,
                       };
                     })
                   }
@@ -1575,6 +1596,40 @@ export default function ChapterDetailPage() {
               />
             </div>
 
+            {["TEXT", "TEXT_AUDIO", "IMAGE_FULL", "RECAP", "CONTINUE_BUTTON"].includes(
+              stepForm.type,
+            ) && (
+              <div className="grid gap-4 rounded-lg border p-4">
+                <div className="flex items-center gap-2">
+                  <Video className="h-4 w-4 text-primary" />
+                  <Label htmlFor="stepVideoUrl">Step Background Video</Label>
+                </div>
+                <FileUpload
+                  bucket="chapter-media"
+                  folder={lessonId}
+                  accepts="video"
+                  currentValue={stepForm.videoUrl}
+                  onUploadComplete={(url) =>
+                    setStepForm((current) => ({
+                      ...current,
+                      videoUrl: url,
+                    }))
+                  }
+                />
+                <Input
+                  id="stepVideoUrl"
+                  value={stepForm.videoUrl}
+                  onChange={(e) =>
+                    setStepForm((current) => ({
+                      ...current,
+                      videoUrl: e.target.value,
+                    }))
+                  }
+                  placeholder="https://..."
+                />
+              </div>
+            )}
+
             {stepForm.type === "TEXT" && (
               <div className="grid gap-4">
                 <div>
@@ -1593,6 +1648,27 @@ export default function ChapterDetailPage() {
                 </div>
                 <div>
                   <Label htmlFor="textBody">Body Text</Label>
+                  <div className="mb-2 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setStepForm((current) => ({
+                          ...current,
+                          paragraphSlidesText: appendParagraphSlide(
+                            current.paragraphSlidesText,
+                            current.body,
+                          ),
+                          body: "",
+                        }))
+                      }
+                      disabled={!stepForm.body.trim()}
+                    >
+                      <Plus className="mr-1 h-4 w-4" />
+                      Add paragraph slide
+                    </Button>
+                  </div>
                   <Textarea
                     id="textBody"
                     value={stepForm.body}
@@ -1627,6 +1703,27 @@ export default function ChapterDetailPage() {
                 </div>
                 <div>
                   <Label htmlFor="audioBody">Body Text</Label>
+                  <div className="mb-2 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setStepForm((current) => ({
+                          ...current,
+                          paragraphSlidesText: appendParagraphSlide(
+                            current.paragraphSlidesText,
+                            current.body,
+                          ),
+                          body: "",
+                        }))
+                      }
+                      disabled={!stepForm.body.trim()}
+                    >
+                      <Plus className="mr-1 h-4 w-4" />
+                      Add paragraph slide
+                    </Button>
+                  </div>
                   <Textarea
                     id="audioBody"
                     value={stepForm.body}

@@ -233,6 +233,7 @@ quizRouter.post(
         completedAt,
         passed,
         isCorrect,
+        correctOption: quiz.correctOption,
       };
     });
 
@@ -242,20 +243,15 @@ quizRouter.post(
       heartsRemaining: transactionResult.heartsRemaining,
       completedAt: transactionResult.completedAt,
       passed: transactionResult.passed,
+      correctOption: transactionResult.correctOption,
     };
 
     payload.heartState = await getUserHearts(req.user!.id);
 
-    // Trigger gamification integration after transaction completes
-    try {
-      if (transactionResult.isCorrect) {
-        // On success: record activity and award XP bonus
-        const gamificationResult = await onQuizSuccess(req.user!.id, 5);
-        payload.gamification = gamificationResult;
-      }
-    } catch (error) {
-      console.error("Gamification integration error:", error);
-      // Don't fail the response, just log the error
+    if (transactionResult.isCorrect) {
+      void onQuizSuccess(req.user!.id, 5).catch((error) => {
+        console.error("Gamification integration error:", error);
+      });
     }
 
     res.status(200).json(payload);

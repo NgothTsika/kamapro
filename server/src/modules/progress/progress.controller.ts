@@ -173,6 +173,7 @@ progressRouter.post(
 
     const alreadyCompleted = Boolean(completed);
     const xpEarned = body.xpEarnedOverride ?? lesson.xpReward;
+    const awardedXp = alreadyCompleted ? 0 : xpEarned;
 
     await prisma.$transaction(async (tx) => {
       await tx.completedLesson.upsert({
@@ -292,18 +293,20 @@ progressRouter.post(
 
         return res.status(200).json({
           ok: true,
-          xpEarned,
+          xpEarned: awardedXp,
           alreadyCompleted,
           gamification: gamificationResult,
         });
       } catch (error) {
         console.error("Gamification integration error:", error);
         // Don't fail the response, just log the error
-        return res.status(200).json({ ok: true, xpEarned, alreadyCompleted });
+        return res
+          .status(200)
+          .json({ ok: true, xpEarned: awardedXp, alreadyCompleted });
       }
     }
 
-    res.status(200).json({ ok: true, xpEarned, alreadyCompleted });
+    res.status(200).json({ ok: true, xpEarned: awardedXp, alreadyCompleted });
   }),
 );
 

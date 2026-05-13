@@ -160,6 +160,17 @@ quizRouter.post(
       const newHearts = heartLost
         ? Math.max(0, userHearts.hearts - 1)
         : userHearts.hearts;
+      const existingCorrectAttempt = isCorrect
+        ? await tx.quizAttempt.findFirst({
+            where: {
+              questionId: quiz.id,
+              isCorrect: true,
+              session: { userId: req.user!.id },
+            },
+            select: { id: true },
+          })
+        : null;
+      const isReplayCompletion = Boolean(existingCorrectAttempt);
 
       const attempt = await tx.quizAttempt.create({
         data: {
@@ -214,7 +225,7 @@ quizRouter.post(
       }
 
       // Award XP to the user only on first correct completion
-      if (isCorrect && passed) {
+      if (isCorrect && passed && !isReplayCompletion) {
         const xpEarned = quiz.lesson?.xpReward ?? 10;
         await tx.user.update({
           where: { id: req.user!.id },
@@ -234,6 +245,7 @@ quizRouter.post(
         passed,
         isCorrect,
         correctOption: quiz.correctOption,
+        alreadyCompleted: isReplayCompletion,
       };
     });
 
@@ -244,11 +256,12 @@ quizRouter.post(
       completedAt: transactionResult.completedAt,
       passed: transactionResult.passed,
       correctOption: transactionResult.correctOption,
+      alreadyCompleted: transactionResult.alreadyCompleted,
     };
 
     payload.heartState = await getUserHearts(req.user!.id);
 
-    if (transactionResult.isCorrect) {
+    if (transactionResult.isCorrect && !transactionResult.alreadyCompleted) {
       void onQuizSuccess(req.user!.id, 5).catch((error) => {
         console.error("Gamification integration error:", error);
       });

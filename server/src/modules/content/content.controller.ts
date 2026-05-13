@@ -18,8 +18,7 @@ let quizChapterIdColumnPromise: Promise<boolean> | null = null;
 
 async function hasQuizChapterIdColumn() {
   if (!quizChapterIdColumnPromise) {
-    quizChapterIdColumnPromise = prisma
-      .$queryRaw<Array<{ exists: boolean }>>`
+    quizChapterIdColumnPromise = prisma.$queryRaw<Array<{ exists: boolean }>>`
         SELECT EXISTS (
           SELECT 1
           FROM information_schema.columns
@@ -43,6 +42,7 @@ function getPublicQuizSelect(includeChapterId: boolean, language?: string) {
     question: true,
     options: true,
     optionImages: true,
+    correctOption: true,
     explanation: true,
     heartLimit: true,
     timeLimitSeconds: true,
@@ -264,6 +264,7 @@ contentRouter.get(
           select: {
             id: true,
             title: true,
+            coverImage: true,
             order: true,
             mediaType: true,
             mediaUrl: true,
@@ -310,14 +311,14 @@ contentRouter.get(
             ...normalized,
             quizzes: normalized.quizzes.map((q) => ({
               ...applyQuizLanguage(q),
-              chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+              chapterId: quizChapterIdEnabled ? (q.chapterId ?? null) : null,
             })),
           }
         : {
             ...normalized,
             quizzes: normalized.quizzes.map((q) => ({
               ...q,
-              chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+              chapterId: quizChapterIdEnabled ? (q.chapterId ?? null) : null,
             })),
           };
 
@@ -354,6 +355,7 @@ contentRouter.get(
             select: {
               id: true,
               title: true,
+              coverImage: true,
               order: true,
               mediaType: true,
               mediaUrl: true,
@@ -390,14 +392,14 @@ contentRouter.get(
               hook: translation.hook,
               quizzes: lesson.quizzes.map((q) => ({
                 ...applyQuizLanguage(q),
-                chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+                chapterId: quizChapterIdEnabled ? (q.chapterId ?? null) : null,
               })),
             }
           : {
               ...lesson,
               quizzes: lesson.quizzes.map((q) => ({
                 ...applyQuizLanguage(q),
-                chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+                chapterId: quizChapterIdEnabled ? (q.chapterId ?? null) : null,
               })),
             },
       });
@@ -423,6 +425,7 @@ contentRouter.get(
           select: {
             id: true,
             title: true,
+            coverImage: true,
             order: true,
             mediaType: true,
             mediaUrl: true,
@@ -442,7 +445,7 @@ contentRouter.get(
         ...lesson,
         quizzes: lesson.quizzes.map((q) => ({
           ...q,
-          chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+          chapterId: quizChapterIdEnabled ? (q.chapterId ?? null) : null,
         })),
       },
     });
@@ -461,6 +464,7 @@ contentRouter.get(
       select: {
         id: true,
         title: true,
+        coverImage: true,
         order: true,
         mediaType: true,
         mediaUrl: true,
@@ -490,11 +494,11 @@ contentRouter.get(
     const payload = language
       ? quizzes.map((q) => ({
           ...applyQuizLanguage(q),
-          chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+          chapterId: quizChapterIdEnabled ? (q.chapterId ?? null) : null,
         }))
       : quizzes.map((q) => ({
           ...q,
-          chapterId: quizChapterIdEnabled ? q.chapterId ?? null : null,
+          chapterId: quizChapterIdEnabled ? (q.chapterId ?? null) : null,
         }));
 
     res.status(200).json({ quizzes: payload });

@@ -88,6 +88,7 @@ type StepFormState = {
   soundEffects: SoundEffectDraft[];
   paragraphSlidesText: string;
   videoUrl: string;
+  videoLowUrl: string;
   title: string;
   body: string;
   audioUrl: string;
@@ -204,6 +205,7 @@ function createDefaultStepForm(
     soundEffects: [],
     paragraphSlidesText: "",
     videoUrl: "",
+    videoLowUrl: "",
     title: "",
     body: "",
     audioUrl: "",
@@ -326,6 +328,9 @@ function toStepForm(step: ChapterStep): StepFormState {
   const content = step.content ?? {};
   base.paragraphSlidesText = slidesToText(content.paragraphSlides);
   base.videoUrl = String(content.videoUrl ?? "");
+  base.videoLowUrl = String(
+    content.videoLowUrl ?? content.lowResolutionVideoUrl ?? "",
+  );
 
   if (step.type === "TEXT") {
     return {
@@ -828,7 +833,11 @@ export default function ChapterDetailPage() {
       ? { paragraphSlides }
       : {};
     const stepVideoUrl = stepForm.videoUrl.trim();
+    const stepVideoLowUrl = stepForm.videoLowUrl.trim();
     const optionalVideo = stepVideoUrl ? { videoUrl: stepVideoUrl } : {};
+    const optionalLowVideo = stepVideoLowUrl
+      ? { videoLowUrl: stepVideoLowUrl }
+      : {};
 
     if (stepForm.type === "TEXT") {
       if (!stepForm.body.trim() && paragraphSlides.length === 0) {
@@ -843,6 +852,7 @@ export default function ChapterDetailPage() {
           ...(stepForm.body.trim() ? { body: stepForm.body.trim() } : {}),
           ...optionalParagraphSlides,
           ...optionalVideo,
+          ...optionalLowVideo,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -868,6 +878,7 @@ export default function ChapterDetailPage() {
           audioUrl,
           ...optionalParagraphSlides,
           ...optionalVideo,
+          ...optionalLowVideo,
         },
         mediaUrl: audioUrl,
         mediaType: "audio" as const,
@@ -903,6 +914,7 @@ export default function ChapterDetailPage() {
             : {}),
           ...optionalParagraphSlides,
           ...optionalVideo,
+          ...optionalLowVideo,
         },
         mediaUrl: imageUrl,
         mediaType: "image" as const,
@@ -927,6 +939,7 @@ export default function ChapterDetailPage() {
           options,
           ...optionalParagraphSlides,
           ...optionalVideo,
+          ...optionalLowVideo,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -960,6 +973,7 @@ export default function ChapterDetailPage() {
           })),
           ...optionalParagraphSlides,
           ...optionalVideo,
+          ...optionalLowVideo,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -1019,6 +1033,7 @@ export default function ChapterDetailPage() {
             : {}),
           ...optionalParagraphSlides,
           ...optionalVideo,
+          ...optionalLowVideo,
         },
         mediaUrl: undefined,
         mediaType: "none" as const,
@@ -1035,7 +1050,12 @@ export default function ChapterDetailPage() {
       return {
         order,
         type: stepForm.type,
-        content: { points, ...optionalParagraphSlides, ...optionalVideo },
+        content: {
+          points,
+          ...optionalParagraphSlides,
+          ...optionalVideo,
+          ...optionalLowVideo,
+        },
         mediaUrl: undefined,
         mediaType: "none" as const,
         ...audioPayload,
@@ -1049,6 +1069,7 @@ export default function ChapterDetailPage() {
         ...(stepForm.buttonText.trim() ? { text: stepForm.buttonText.trim() } : {}),
         ...optionalParagraphSlides,
         ...optionalVideo,
+        ...optionalLowVideo,
       },
       mediaUrl: undefined,
       mediaType: "none" as const,
@@ -1132,15 +1153,19 @@ export default function ChapterDetailPage() {
             </div>
 
             <div className="md:col-span-2">
-              <Label htmlFor="introText">Introduction Text</Label>
+              <Label htmlFor="introText">Introduction Paragraph Slides</Label>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Separate each intro paragraph with a blank line. Mobile reads
+                these one paragraph at a time before the first step.
+              </p>
               <Textarea
                 id="introText"
                 value={chapterForm.introText}
                 onChange={(e) =>
                   setChapterForm({ ...chapterForm, introText: e.target.value })
                 }
-                placeholder="This is the intro screen before the first chapter step."
-                rows={5}
+                placeholder={"First intro paragraph.\n\nSecond intro paragraph.\n\nThird intro paragraph."}
+                rows={7}
               />
             </div>
 
@@ -1627,6 +1652,38 @@ export default function ChapterDetailPage() {
                   }
                   placeholder="https://..."
                 />
+                <div className="grid gap-2 rounded-md bg-muted/40 p-3">
+                  <Label htmlFor="stepVideoLowUrl">
+                    Low-resolution video URL
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Optional but recommended for mobile. The app uses this first
+                    so paragraph reading can start against a lighter video.
+                  </p>
+                  <FileUpload
+                    bucket="chapter-media"
+                    folder={lessonId}
+                    accepts="video"
+                    currentValue={stepForm.videoLowUrl}
+                    onUploadComplete={(url) =>
+                      setStepForm((current) => ({
+                        ...current,
+                        videoLowUrl: url,
+                      }))
+                    }
+                  />
+                  <Input
+                    id="stepVideoLowUrl"
+                    value={stepForm.videoLowUrl}
+                    onChange={(e) =>
+                      setStepForm((current) => ({
+                        ...current,
+                        videoLowUrl: e.target.value,
+                      }))
+                    }
+                    placeholder="https://.../mobile-480p.mp4"
+                  />
+                </div>
               </div>
             )}
 

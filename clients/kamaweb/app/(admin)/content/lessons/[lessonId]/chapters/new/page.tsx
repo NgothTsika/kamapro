@@ -125,15 +125,19 @@ export default function NewChapterPage() {
           </div>
 
           <div>
-            <Label htmlFor="introText">Introduction Text</Label>
+            <Label htmlFor="introText">Introduction Paragraph Slides</Label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Separate each intro paragraph with a blank line. Mobile reads
+              these one paragraph at a time.
+            </p>
             <Textarea
               id="introText"
               value={form.introText}
               onChange={(e) =>
                 setForm({ ...form, introText: e.target.value })
               }
-              placeholder="Optional text shown before the first step"
-              rows={5}
+              placeholder={"First intro paragraph.\n\nSecond intro paragraph.\n\nThird intro paragraph."}
+              rows={7}
             />
           </div>
 

@@ -1096,10 +1096,14 @@ export default function EditLessonPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>Intro Text (shown before steps)</Label>
+              <Label>Intro Paragraph Slides</Label>
+              <p className="text-xs text-muted-foreground">
+                Separate each intro paragraph with a blank line. Mobile reads
+                these one paragraph at a time.
+              </p>
               <Textarea
                 className="min-h-32"
-                placeholder="Introduction text for this chapter..."
+                placeholder={"First intro paragraph.\n\nSecond intro paragraph.\n\nThird intro paragraph."}
                 value={chapterForm.introText}
                 onChange={(e) =>
                   setChapterForm((f) => ({ ...f, introText: e.target.value }))

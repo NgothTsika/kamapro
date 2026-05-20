@@ -15,6 +15,7 @@ interface Props {
   onComplete: () => void;
   showAction?: boolean;
   showMedia?: boolean;
+  hideBody?: boolean;
 }
 
 export function ImageFullStep({
@@ -23,10 +24,15 @@ export function ImageFullStep({
   onComplete,
   showAction = true,
   showMedia = true,
+  hideBody = false,
 }: Props) {
   const { t } = useTranslation();
   const [imageLoading, setImageLoading] = useState(true);
-  const paragraphs = getParagraphs(content.description, content.body);
+  const paragraphs = getParagraphs(
+    content.paragraphs,
+    content.description,
+    content.body,
+  );
 
   return (
     <View style={styles.container}>
@@ -53,7 +59,7 @@ export function ImageFullStep({
         title={content.title}
         subtitle={content.subtitle}
       />
-      <StoryParagraphs paragraphs={paragraphs} />
+      {!hideBody ? <StoryParagraphs paragraphs={paragraphs} /> : null}
       {showAction ? (
         <StoryPrimaryButton
           label={content.buttonLabel ?? t("story.continue")}

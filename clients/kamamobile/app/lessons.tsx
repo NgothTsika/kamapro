@@ -16,6 +16,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialIcons } from "@expo/vector-icons";
 import { AnimatedLessonProgressBar } from "@/components/lesson/AnimatedLessonProgressBar";
 
+type LessonProgressState = {
+  started: boolean;
+  completed: boolean;
+  value: number;
+};
+
 const palette = {
   plum: "#3d0d35",
   plumDark: "#24061f",
@@ -33,16 +39,27 @@ function LessonTile({
   featured,
   locked,
   status,
+  progress,
 }: {
   lesson: LessonSummary;
   featured?: boolean;
   locked?: boolean;
   status?: string;
+  progress?: LessonProgressState;
 }) {
   return (
     <Pressable
       disabled={locked}
-      onPress={() => router.push(`/lesson/${lesson.slug}`)}
+      onPress={() =>
+        router.push({
+          pathname: "/lesson/[slug]",
+          params: {
+            slug: lesson.slug,
+            lessonTitle: lesson.title,
+            lessonCoverImage: lesson.coverImage ?? undefined,
+          },
+        })
+      }
       style={({ pressed }) => [
         styles.lessonCard,
         featured && styles.featuredCard,
@@ -62,10 +79,9 @@ function LessonTile({
             <Text style={styles.lockBadgeText}>Locked</Text>
           </View>
         ) : null}
-        <AnimatedLessonProgressBar
-          value={featured ? 0.72 : 0.48}
-          height={14}
-        />
+        {progress?.started || progress?.completed ? (
+          <AnimatedLessonProgressBar value={progress.value} height={14} />
+        ) : null}
       </ImageBackground>
 
       <View style={styles.lessonBody}>
@@ -94,6 +110,9 @@ export default function LessonsScreen() {
   const [lessons, setLessons] = useState<LessonSummary[]>([]);
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
   const [inProgressLessonIds, setInProgressLessonIds] = useState<string[]>([]);
+  const [progressByLessonId, setProgressByLessonId] = useState<
+    Record<string, LessonProgressState>
+  >({});
   const { onScroll } = useTabBarScroll();
 
   useEffect(() => {
@@ -127,8 +146,9 @@ export default function LessonsScreen() {
 
         const completed = validProgressList
           .filter((item) =>
-            item.progress.lesson.chapters.every(
-              (chapter) => chapter.chapterProgress?.[0]?.completed,
+            item.progress.lesson.chapters.length > 0 &&
+            item.progress.lesson.chapters.every((chapter) =>
+              Boolean(chapter.chapterProgress?.[0]?.completed),
             ),
           )
           .map((item) => item.lessonId);
@@ -143,10 +163,37 @@ export default function LessonsScreen() {
           )
           .map((item) => item.lessonId);
 
+        const nextProgressByLessonId = validProgressList.reduce<
+          Record<string, LessonProgressState>
+        >((acc, item) => {
+          const chapters = item.progress.lesson.chapters;
+          const completedChapters = chapters.filter((chapter) =>
+            Boolean(chapter.chapterProgress?.[0]?.completed),
+          ).length;
+          const hasStarted = chapters.some((chapter) =>
+            Boolean(chapter.chapterProgress?.[0]),
+          );
+          const isCompleted =
+            chapters.length > 0 && completedChapters === chapters.length;
+
+          acc[item.lessonId] = {
+            started: hasStarted,
+            completed: isCompleted,
+            value:
+              chapters.length > 0
+                ? Math.max(completedChapters / chapters.length, hasStarted ? 0.08 : 0)
+                : 0,
+          };
+
+          return acc;
+        }, {});
+
         setCompletedLessonIds(completed);
         setInProgressLessonIds(inProgress);
+        setProgressByLessonId(nextProgressByLessonId);
       } catch {
         setLessons([]);
+        setProgressByLessonId({});
       }
     })();
   }, []);
@@ -211,6 +258,7 @@ export default function LessonsScreen() {
                         ? "Open Lesson"
                         : "Finish previous lesson"
                 }
+                progress={progressByLessonId[featured.id]}
               />
             ) : null}
 
@@ -235,6 +283,7 @@ export default function LessonsScreen() {
                     ? "Open Lesson"
                     : "Locked"
             }
+            progress={progressByLessonId[item.id]}
           />
         )}
         ListEmptyComponent={

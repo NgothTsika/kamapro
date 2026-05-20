@@ -1,3 +1,4 @@
+import { MaterialIcons } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import React from "react";
 import {
@@ -158,10 +159,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#f7eddc",
   },
   content: {
+    height: "100%",
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 28,
     gap: 20,
+    justifyContent: "center",
   },
   backgroundOrbTop: {
     position: "absolute",

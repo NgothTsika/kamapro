@@ -38,10 +38,54 @@ export function useChapterProgress(chapterId: string, lessonId: string) {
         currentIndex,
       );
       setProgress(updated.progress);
-      const lessonData = await kama.getLessonProgress(lessonId);
-      setLessonProgress(lessonData.progress);
+      setLessonProgress((current) =>
+        current
+          ? {
+              ...current,
+              lesson: {
+                ...current.lesson,
+                chapters: current.lesson.chapters.map((chapter) =>
+                  chapter.id === chapterId
+                    ? { ...chapter, chapterProgress: [updated.progress] }
+                    : chapter,
+                ),
+              },
+            }
+          : current,
+      );
     } catch (err) {
       console.error("Failed to advance step:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function setStepIndex(stepIndex: number) {
+    try {
+      setLoading(true);
+      const updated = await kama.setChapterStepIndex(
+        lessonId,
+        chapterId,
+        stepIndex,
+      );
+      setProgress(updated.progress);
+      setLessonProgress((current) =>
+        current
+          ? {
+              ...current,
+              lesson: {
+                ...current.lesson,
+                chapters: current.lesson.chapters.map((chapter) =>
+                  chapter.id === chapterId
+                    ? { ...chapter, chapterProgress: [updated.progress] }
+                    : chapter,
+                ),
+              },
+            }
+          : current,
+      );
+    } catch (err) {
+      console.error("Failed to update chapter step:", err);
     } finally {
       setLoading(false);
     }
@@ -52,8 +96,21 @@ export function useChapterProgress(chapterId: string, lessonId: string) {
       setLoading(true);
       const result = await kama.completeChapter(lessonId, chapterId);
       setProgress(result.progress);
-      const lessonData = await kama.getLessonProgress(lessonId);
-      setLessonProgress(lessonData.progress);
+      setLessonProgress((current) =>
+        current
+          ? {
+              ...current,
+              lesson: {
+                ...current.lesson,
+                chapters: current.lesson.chapters.map((chapter) =>
+                  chapter.id === chapterId
+                    ? { ...chapter, chapterProgress: [result.progress] }
+                    : chapter,
+                ),
+              },
+            }
+          : current,
+      );
     } catch (err) {
       console.error("Failed to complete chapter:", err);
       throw err;
@@ -67,6 +124,7 @@ export function useChapterProgress(chapterId: string, lessonId: string) {
     lessonProgress,
     loading,
     advanceStep,
+    setStepIndex,
     completeChapter,
     reload: loadProgress,
   };

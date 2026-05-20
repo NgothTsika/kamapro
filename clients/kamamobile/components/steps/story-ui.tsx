@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -6,6 +6,10 @@ import {
   Text,
   View,
 } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+
+const MIN_NARRATION_START_DELAY_MS = 2000;
 
 export const storyColors = {
   ink: "#21314f",
@@ -23,13 +27,36 @@ export const storyColors = {
 };
 
 export function getParagraphs(...values: unknown[]): string[] {
+  const readString = (value: unknown): string[] => {
+    if (typeof value === "string") return value.split(/\n{2,}/);
+    if (!value || typeof value !== "object") return [];
+
+    const record = value as Record<string, unknown>;
+    return [
+      record.text,
+      record.body,
+      record.paragraph,
+      record.content,
+      record.value,
+      record.description,
+    ].flatMap(readString);
+  };
+
   return values
     .flatMap((value) => {
-      if (typeof value === "string") return value.split(/\n{2,}/);
+      if (typeof value === "string") return readString(value);
       if (Array.isArray(value)) {
-        return value.flatMap((item) =>
-          typeof item === "string" ? item.split(/\n{2,}/) : [],
-        );
+        return value.flatMap(readString);
+      }
+      if (value && typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        return [
+          record.paragraphSlides,
+          record.paragraphs,
+          record.slides,
+          record.items,
+          record.text,
+        ].flatMap(readString);
       }
       return [];
     })
@@ -63,6 +90,171 @@ export function StoryParagraphs({ paragraphs }: { paragraphs: string[] }) {
           {paragraph}
         </Text>
       ))}
+    </View>
+  );
+}
+
+export function StoryParagraphSlider({
+  slides,
+  onStateChange,
+  readingEnabled = true,
+  pauseAudioSignal = 0,
+  resumeAudioSignal = 0,
+  stopAudioSignal = 0,
+  startDelayMs,
+}: {
+  slides?: unknown;
+  onStateChange?: (state: { hasSlides: boolean; completed: boolean }) => void;
+  readingEnabled?: boolean;
+  pauseAudioSignal?: number;
+  resumeAudioSignal?: number;
+  stopAudioSignal?: number;
+  startDelayMs?: number;
+}) {
+  const paragraphs = useMemo(() => getParagraphs(slides), [slides]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [completed, setCompleted] = useState(false);
+  const { speak, pause, resume, stop, settings } = useAudioPlayer();
+  const slideKey = paragraphs.join("|");
+  const effectiveStartDelayMs = Math.max(
+    MIN_NARRATION_START_DELAY_MS,
+    startDelayMs ?? settings.startDelaySeconds * 1000,
+  );
+  const advanceTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  function clearAdvanceTimeout() {
+    if (advanceTimeoutRef.current) {
+      clearTimeout(advanceTimeoutRef.current);
+      advanceTimeoutRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    stop();
+    clearAdvanceTimeout();
+    setActiveIndex(0);
+    setCompleted(paragraphs.length === 0);
+  }, [paragraphs.length, slideKey, stop]);
+
+  useEffect(() => {
+    onStateChange?.({
+      hasSlides: paragraphs.length > 0,
+      completed: paragraphs.length === 0 || completed,
+    });
+  }, [completed, onStateChange, paragraphs.length]);
+
+  useEffect(() => {
+    if (!readingEnabled || paragraphs.length === 0 || completed) return;
+
+    const activeParagraph = paragraphs[activeIndex];
+    if (!activeParagraph) return;
+
+    clearAdvanceTimeout();
+
+    // Always read paragraph slides (regardless of autoPlay setting)
+    // Paragraph slides with video should prioritize text-to-speech
+    if (!settings.enabled) {
+      // If TTS is disabled, just show text for a calculated reading time
+      const readingMs = Math.max(
+        2400,
+        activeParagraph.split(/\s+/).length * 420,
+      );
+
+      advanceTimeoutRef.current = setTimeout(() => {
+        if (activeIndex >= paragraphs.length - 1) {
+          setCompleted(true);
+          return;
+        }
+
+        setActiveIndex((value) => Math.min(value + 1, paragraphs.length - 1));
+      }, readingMs + 2500);
+
+      return () => clearAdvanceTimeout();
+    }
+
+    // TTS is enabled, read the paragraph
+    const startTimeout = setTimeout(
+      () => {
+        void speak(activeParagraph, () => {
+          advanceTimeoutRef.current = setTimeout(() => {
+            if (activeIndex >= paragraphs.length - 1) {
+              setCompleted(true);
+              return;
+            }
+
+            setActiveIndex((value) =>
+              Math.min(value + 1, paragraphs.length - 1),
+            );
+          }, 2500);
+        });
+      },
+      effectiveStartDelayMs,
+    );
+
+    return () => {
+      clearTimeout(startTimeout);
+      clearAdvanceTimeout();
+    };
+  }, [
+    activeIndex,
+    completed,
+    paragraphs,
+    readingEnabled,
+    settings.enabled,
+    effectiveStartDelayMs,
+    speak,
+  ]);
+
+  useEffect(() => {
+    if (pauseAudioSignal === 0) return;
+    clearAdvanceTimeout();
+    void pause();
+  }, [pause, pauseAudioSignal]);
+
+  useEffect(() => {
+    if (resumeAudioSignal === 0) return;
+    void resume();
+  }, [resume, resumeAudioSignal]);
+
+  useEffect(() => {
+    if (stopAudioSignal === 0) return;
+    clearAdvanceTimeout();
+    stop();
+    setCompleted(true);
+  }, [stop, stopAudioSignal]);
+
+  if (paragraphs.length === 0) return null;
+
+  const activeParagraph =
+    paragraphs[Math.min(activeIndex, paragraphs.length - 1)];
+
+  return (
+    <View style={styles.slideShell}>
+      <View style={styles.slideCard}>
+        <Animated.Text
+          key={`${activeIndex}-${activeParagraph}`}
+          entering={FadeIn.duration(360)}
+          exiting={FadeOut.duration(180)}
+          style={styles.slideText}
+        >
+          {activeParagraph}
+        </Animated.Text>
+        <View style={styles.slideFooter}>
+          <View style={styles.slideDots}>
+            {paragraphs.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.slideDot,
+                  index === activeIndex && styles.slideDotActive,
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
@@ -190,6 +382,46 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 30,
     fontWeight: "500",
+  },
+  slideShell: {
+    gap: 10,
+  },
+  slideCard: {
+    minHeight: 188,
+    justifyContent: "space-between",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: storyColors.sandLine,
+    backgroundColor: storyColors.paperSoft,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+  },
+  slideText: {
+    color: storyColors.ink,
+    fontSize: 16,
+    lineHeight: 28,
+    fontWeight: "600",
+  },
+  slideFooter: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  slideDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  slideDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#d8ccb9",
+  },
+  slideDotActive: {
+    width: 18,
+    backgroundColor: storyColors.accent,
   },
   primaryButton: {
     backgroundColor: storyColors.navy,

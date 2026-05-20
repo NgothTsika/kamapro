@@ -9,6 +9,8 @@ import {
   View,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
+import Slider from "@react-native-community/slider";
+import * as Speech from "expo-speech";
 import { useTranslation } from "react-i18next";
 import { useLocale } from "@/lib/auth/locale-context";
 import {
@@ -24,6 +26,11 @@ import { storyTheme } from "@/components/ui/story-theme";
 interface LanguageAudioSettingsProps {
   visible: boolean;
   onClose: () => void;
+  isNarrationPlaying?: boolean;
+  isNarrationPaused?: boolean;
+  onPauseNarration?: () => void;
+  onResumeNarration?: () => void;
+  onStopNarration?: () => void;
 }
 
 type SliderSettingProps = {
@@ -33,6 +40,9 @@ type SliderSettingProps = {
   description: string;
   value: number;
   valueLabel: string;
+  min?: number;
+  max?: number;
+  step?: number;
   onChange: (value: number) => void;
 };
 
@@ -47,8 +57,13 @@ function SliderSetting({
   description,
   value,
   valueLabel,
+  min = 0,
+  max = 1,
+  step = 0.05,
   onChange,
 }: SliderSettingProps) {
+  const updateValue = (next: number) => onChange(clamp(next, min, max));
+
   return (
     <View style={styles.sliderSection}>
       <View style={styles.sliderHeader}>
@@ -62,24 +77,27 @@ function SliderSetting({
       <View style={styles.sliderRow}>
         <Pressable
           hitSlop={8}
-          onPress={() => onChange(clamp(value - 0.1))}
+          onPress={() => updateValue(value - step)}
           style={styles.stepButton}
         >
           <MaterialIcons name={iconLeft} size={22} color={storyTheme.inkSoft} />
         </Pressable>
 
-        <Pressable
-          onPress={() => onChange(clamp(value + 0.1))}
-          style={styles.trackShell}
-        >
-          <View style={styles.track} />
-          <View style={[styles.trackFill, { width: `${value * 100}%` }]} />
-          <View style={[styles.trackThumb, { left: `${value * 100}%` }]} />
-        </Pressable>
+        <Slider
+          style={styles.slider}
+          minimumValue={min}
+          maximumValue={max}
+          step={step}
+          value={value}
+          onValueChange={updateValue}
+          minimumTrackTintColor="#727b89"
+          maximumTrackTintColor="#dfd7ca"
+          thumbTintColor={storyTheme.white}
+        />
 
         <Pressable
           hitSlop={8}
-          onPress={() => onChange(clamp(value + 0.1))}
+          onPress={() => updateValue(value + step)}
           style={styles.stepButton}
         >
           <MaterialIcons name={iconRight} size={22} color={storyTheme.inkSoft} />
@@ -92,10 +110,24 @@ function SliderSetting({
 export function LanguageAudioSettings({
   visible,
   onClose,
+  isNarrationPlaying = false,
+  isNarrationPaused = false,
+  onPauseNarration,
+  onResumeNarration,
+  onStopNarration,
 }: LanguageAudioSettingsProps) {
   const { t } = useTranslation();
   const { currentLanguage, setLanguage, isInitialized } = useLocale();
   const { preferences, updatePreferences } = useAudioPreferences();
+  const [voices, setVoices] = React.useState<Speech.Voice[]>([]);
+
+  React.useEffect(() => {
+    if (!visible) return;
+
+    void Speech.getAvailableVoicesAsync()
+      .then(setVoices)
+      .catch(() => setVoices([]));
+  }, [visible]);
 
   if (!isInitialized) {
     return null;
@@ -139,6 +171,51 @@ export function LanguageAudioSettings({
             contentContainerStyle={styles.contentContainer}
             showsVerticalScrollIndicator={false}
           >
+            <View style={styles.section}>
+              <View style={styles.playbackPanel}>
+                <Pressable
+                  style={[
+                    styles.playbackButton,
+                    (!isNarrationPlaying || isNarrationPaused) &&
+                      styles.playbackButtonPrimary,
+                  ]}
+                  onPress={() => {
+                    if (isNarrationPaused) {
+                      onResumeNarration?.();
+                      return;
+                    }
+                    onPauseNarration?.();
+                  }}
+                >
+                  <MaterialIcons
+                    name={isNarrationPaused ? "play-arrow" : "pause"}
+                    size={22}
+                    color={
+                      !isNarrationPlaying || isNarrationPaused
+                        ? storyTheme.white
+                        : storyTheme.navy
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.playbackButtonText,
+                      (!isNarrationPlaying || isNarrationPaused) &&
+                        styles.playbackButtonTextPrimary,
+                    ]}
+                  >
+                    {isNarrationPaused ? t("audio.play") : t("audio.pause")}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.playbackIconButton}
+                  onPress={onStopNarration}
+                >
+                  <MaterialIcons name="stop" size={22} color={storyTheme.navy} />
+                </Pressable>
+              </View>
+            </View>
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("settings.language")}</Text>
               <Text style={styles.sectionDescription}>
@@ -244,14 +321,99 @@ export function LanguageAudioSettings({
               iconRight="directions-run"
               title={t("settings.narrationSpeed")}
               description={t("settings.narrationSpeedDescription")}
-              value={(preferences.narrationSpeed - 0.5) / 1.5}
+              value={preferences.narrationSpeed}
               valueLabel={`${preferences.narrationSpeed.toFixed(1)}x`}
+              min={0.5}
+              max={2}
+              step={0.1}
               onChange={(value) =>
                 void patchPreferences({
-                  narrationSpeed: Number((0.5 + value * 1.5).toFixed(1)),
+                  narrationSpeed: Number(value.toFixed(1)),
                 })
               }
             />
+
+            <SliderSetting
+              iconLeft="timer-off"
+              iconRight="timer"
+              title={t("settings.narrationDelay")}
+              description={t("settings.narrationDelayDescription")}
+              value={preferences.narrationStartDelaySeconds}
+              valueLabel={`${preferences.narrationStartDelaySeconds.toFixed(1)}s`}
+              min={0}
+              max={5}
+              step={0.5}
+              onChange={(value) =>
+                void patchPreferences({
+                  narrationStartDelaySeconds: Number(value.toFixed(1)),
+                })
+              }
+            />
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("settings.aiVoice")}</Text>
+              <Text style={styles.sectionDescription}>
+                {t("settings.aiVoiceDescription")}
+              </Text>
+              <View style={styles.voiceList}>
+                <Pressable
+                  onPress={() =>
+                    void patchPreferences({ narrationVoiceIdentifier: null })
+                  }
+                  style={[
+                    styles.voicePill,
+                    !preferences.narrationVoiceIdentifier &&
+                      styles.voicePillActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.voicePillText,
+                      !preferences.narrationVoiceIdentifier &&
+                        styles.voicePillTextActive,
+                    ]}
+                  >
+                    {t("settings.systemVoice")}
+                  </Text>
+                </Pressable>
+                {voices
+                  .filter((voice) =>
+                    voice.language
+                      ?.toLowerCase()
+                      .startsWith(currentLanguage.toLowerCase()),
+                  )
+                  .slice(0, 6)
+                  .map((voice) => {
+                    const active =
+                      preferences.narrationVoiceIdentifier === voice.identifier;
+
+                    return (
+                      <Pressable
+                        key={voice.identifier}
+                        onPress={() =>
+                          void patchPreferences({
+                            narrationVoiceIdentifier: voice.identifier,
+                          })
+                        }
+                        style={[
+                          styles.voicePill,
+                          active && styles.voicePillActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.voicePillText,
+                            active && styles.voicePillTextActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {voice.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+              </View>
+            </View>
 
             <SliderSetting
               iconLeft="volume-mute"
@@ -292,6 +454,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
+    height: "92%",
     maxHeight: "92%",
     backgroundColor: storyTheme.paper,
     borderTopLeftRadius: 28,
@@ -371,6 +534,46 @@ const styles = StyleSheet.create({
   languagePillTextActive: {
     color: storyTheme.white,
   },
+  playbackPanel: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  playbackButton: {
+    flex: 1,
+    minHeight: 54,
+    borderRadius: 27,
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+    backgroundColor: storyTheme.paperSoft,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  playbackButtonPrimary: {
+    backgroundColor: storyTheme.navy,
+    borderColor: storyTheme.navy,
+  },
+  playbackButtonText: {
+    color: storyTheme.navy,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  playbackButtonTextPrimary: {
+    color: storyTheme.white,
+  },
+  playbackIconButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+    backgroundColor: storyTheme.paperSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   toggleRow: {
     borderRadius: 22,
     borderWidth: 1,
@@ -434,36 +637,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  trackShell: {
+  slider: {
     flex: 1,
     height: 44,
+  },
+  voiceList: {
+    gap: 10,
+  },
+  voicePill: {
+    minHeight: 48,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+    backgroundColor: storyTheme.paperSoft,
+    paddingHorizontal: 16,
     justifyContent: "center",
   },
-  track: {
-    height: 14,
-    borderRadius: 999,
-    backgroundColor: "#dfd7ca",
+  voicePillActive: {
+    backgroundColor: storyTheme.navy,
+    borderColor: storyTheme.navy,
   },
-  trackFill: {
-    position: "absolute",
-    left: 0,
-    top: 15,
-    height: 14,
-    borderRadius: 999,
-    backgroundColor: "#727b89",
+  voicePillText: {
+    color: storyTheme.ink,
+    fontSize: 15,
+    fontWeight: "800",
   },
-  trackThumb: {
-    position: "absolute",
-    top: 8,
-    width: 28,
-    height: 28,
-    marginLeft: -14,
-    borderRadius: 14,
-    backgroundColor: storyTheme.white,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    elevation: 5,
+  voicePillTextActive: {
+    color: storyTheme.white,
   },
 });

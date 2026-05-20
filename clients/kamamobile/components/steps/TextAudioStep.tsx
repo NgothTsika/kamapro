@@ -17,6 +17,11 @@ interface Props {
   showAction?: boolean;
   onAudioStart?: () => void;
   onAudioFinished?: () => void;
+  pauseAudioSignal?: number;
+  resumeAudioSignal?: number;
+  stopAudioSignal?: number;
+  hideBody?: boolean;
+  readingEnabled?: boolean;
 }
 
 export function TextAudioStep({
@@ -26,10 +31,19 @@ export function TextAudioStep({
   showAction = true,
   onAudioStart,
   onAudioFinished,
+  pauseAudioSignal,
+  resumeAudioSignal,
+  stopAudioSignal,
+  hideBody = false,
+  readingEnabled = true,
 }: Props) {
   const { t } = useTranslation();
   const { preferences } = useAudioPreferences();
-  const paragraphs = getParagraphs(content.body, content.details);
+  const paragraphs = getParagraphs(
+    content.paragraphs,
+    content.body,
+    content.details,
+  );
 
   return (
     <View style={styles.container}>
@@ -38,7 +52,7 @@ export function TextAudioStep({
         title={content.title}
         subtitle={content.subtitle}
       />
-      <StoryParagraphs paragraphs={paragraphs} />
+      {!hideBody ? <StoryParagraphs paragraphs={paragraphs} /> : null}
 
       {mediaUrl && (
         <NarrationPlayerButton
@@ -47,9 +61,16 @@ export function TextAudioStep({
           onPlaybackStart={onAudioStart}
           onPlaybackEnd={onAudioFinished}
           autoPlay={
-            preferences.narrationEnabled && preferences.autoPlayNarration
+            readingEnabled &&
+            preferences.narrationEnabled &&
+            preferences.autoPlayNarration
           }
+          autoPlayDelayMs={preferences.narrationStartDelaySeconds * 1000}
           playbackVolume={preferences.narrationVolume}
+          playbackRate={preferences.narrationSpeed}
+          pauseSignal={pauseAudioSignal}
+          resumeSignal={resumeAudioSignal}
+          stopSignal={stopAudioSignal}
         />
       )}
 

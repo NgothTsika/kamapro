@@ -43,6 +43,20 @@ type BlockedLesson = {
   title: string;
 };
 
+function openLesson(
+  navigation: ReturnType<typeof useRouter>,
+  slug: string,
+  title: string,
+) {
+  navigation.push({
+    pathname: "/lesson/[slug]",
+    params: {
+      slug,
+      lessonTitle: title,
+    },
+  });
+}
+
 export default function CharacterDetailPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -142,7 +156,7 @@ export default function CharacterDetailPage() {
       setHearts(updatedHearts);
       const nextLesson = blockedLesson;
       setBlockedLesson(null);
-      router.push(`/lesson/${nextLesson.slug}`);
+      openLesson(router, nextLesson.slug, nextLesson.title);
     } catch (restoreError) {
       Alert.alert(
         "Heart not restored",
@@ -361,7 +375,7 @@ export default function CharacterDetailPage() {
                         });
                         return;
                       }
-                      router.push(`/lesson/${lesson.slug}`);
+                      openLesson(router, lesson.slug, lesson.title);
                     }}
                     style={({ pressed }) => [
                       styles.lessonRow,

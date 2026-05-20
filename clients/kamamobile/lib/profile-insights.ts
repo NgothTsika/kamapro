@@ -143,15 +143,21 @@ export function buildMonthCalendar(
   dashboard: DashboardData | null,
   referenceDate = new Date(),
 ): { monthLabel: string; days: CalendarDay[] } {
-  const today = atLocalNoon(referenceDate);
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1, 12);
+  const viewDate = atLocalNoon(referenceDate);
+  const actualToday = atLocalNoon(new Date());
+  const monthStart = new Date(
+    viewDate.getFullYear(),
+    viewDate.getMonth(),
+    1,
+    12,
+  );
   const daysInMonth = new Date(
-    today.getFullYear(),
-    today.getMonth() + 1,
+    viewDate.getFullYear(),
+    viewDate.getMonth() + 1,
     0,
     12,
   ).getDate();
-  const completedDays = getStreakCompletionSet(dashboard, today);
+  const completedDays = getStreakCompletionSet(dashboard, actualToday);
   const days: CalendarDay[] = [];
 
   for (let index = 0; index < monthStart.getDay(); index += 1) {
@@ -164,18 +170,23 @@ export function buildMonthCalendar(
   }
 
   for (let day = 1; day <= daysInMonth; day += 1) {
-    const current = new Date(today.getFullYear(), today.getMonth(), day, 12);
+    const current = new Date(
+      viewDate.getFullYear(),
+      viewDate.getMonth(),
+      day,
+      12,
+    );
     const key = toDayKey(current);
     days.push({
       key,
       value: day,
       isComplete: completedDays.has(key),
-      isToday: key === toDayKey(today),
+      isToday: key === toDayKey(actualToday),
     });
   }
 
   return {
-    monthLabel: today.toLocaleDateString("en", {
+    monthLabel: viewDate.toLocaleDateString("en", {
       month: "long",
       year: "numeric",
     }),

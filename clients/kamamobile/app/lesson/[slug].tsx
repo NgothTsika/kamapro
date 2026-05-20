@@ -18,10 +18,12 @@ import {
 } from "react-native-safe-area-context";
 import { MaterialIcons } from "@expo/vector-icons";
 import Animated, {
+  Easing,
   interpolate,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 import { ImageBackground } from "expo-image";
 import type { UserChapterProgress } from "@/lib/types";
@@ -44,9 +46,23 @@ function getExcerpt(text?: string | null) {
   return text.length > 140 ? `${text.slice(0, 140).trim()}...` : text;
 }
 
+function getChapterCover(
+  chapter: LessonFull["chapters"][number] | null | undefined,
+  fallback?: string | null,
+) {
+  return (
+    (chapter as { coverImage?: string | null } | null | undefined)
+      ?.coverImage ?? fallback
+  );
+}
+
 export default function LessonStoryScreen() {
   const insets = useSafeAreaInsets();
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { slug, lessonTitle, lessonCoverImage } = useLocalSearchParams<{
+    slug: string;
+    lessonTitle?: string;
+    lessonCoverImage?: string;
+  }>();
   const { currentLanguage } = useLocale();
   const [lesson, setLesson] = useState<LessonFull | null>(null);
   const [currentChapterId, setCurrentChapterId] = useState<string | null>(null);
@@ -54,9 +70,17 @@ export default function LessonStoryScreen() {
   const [chapterProgressById, setChapterProgressById] = useState<
     Record<string, UserChapterProgress | undefined>
   >({});
+  const [launchingChapter, setLaunchingChapter] = useState<{
+    title: string;
+    coverImage?: string | null;
+  } | null>(null);
+  const [completedChapterChoice, setCompletedChapterChoice] = useState<
+    LessonFull["chapters"][number] | null
+  >(null);
   const [showHeartGate, setShowHeartGate] = useState(false);
   const { hearts, hasHearts } = useHeartsState();
   const scrollY = useSharedValue(0);
+  const launchScale = useSharedValue(1);
 
   useEffect(() => {
     if (!slug || typeof slug !== "string") {
@@ -135,21 +159,119 @@ export default function LessonStoryScreen() {
     ),
   }));
 
+  const titleLiftStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(scrollY.value, [0, 180], [0, -18]),
+      },
+    ],
+    opacity: interpolate(scrollY.value, [0, 220], [1, 0.2]),
+  }));
+
+  const launchImageStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: launchScale.value }],
+  }));
+
   if (!lesson) {
+    const loadingTitle =
+      typeof lessonTitle === "string" && lessonTitle.trim()
+        ? lessonTitle
+        : typeof slug === "string"
+          ? slug.replace(/-/g, " ")
+          : "Lesson";
+    const loadingCover =
+      typeof lessonCoverImage === "string" && lessonCoverImage.trim()
+        ? lessonCoverImage
+        : null;
+
     return (
       <SafeAreaView style={styles.loadingScreen}>
         <Stack.Screen options={{ headerShown: false }} />
-        <ActivityIndicator size="large" color={palette.mint} />
+        {loadingCover ? (
+          <ImageBackground
+            source={{ uri: loadingCover }}
+            style={styles.loadingCover}
+            contentFit="cover"
+          >
+            <View style={styles.loadingShade} />
+          </ImageBackground>
+        ) : (
+          <View style={[styles.loadingCover, styles.loadingFallback]} />
+        )}
+        <View style={styles.loadingContent}>
+          <ActivityIndicator size="large" color="#ffffff" />
+          <Text style={styles.loadingTitle}>{loadingTitle}</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
-  const startLesson = () => {
+  const openChapter = (
+    chapter: LessonFull["chapters"][number],
+    options?: { replay?: boolean; skipCompletedPrompt?: boolean },
+  ) => {
     if (!hasHearts) {
       setShowHeartGate(true);
       return;
     }
 
+    const coverImage = getChapterCover(chapter, lesson.coverImage);
+    const isCompleted = completedChapterIds.includes(chapter.id);
+    const hasQuiz = lesson.quizzes.some(
+      (quiz) => !quiz.chapterId || quiz.chapterId === chapter.id,
+    );
+
+    if (isCompleted && hasQuiz && !options?.skipCompletedPrompt) {
+      setCompletedChapterChoice(chapter);
+      return;
+    }
+
+    setLaunchingChapter({ title: chapter.title, coverImage });
+    launchScale.value = 1;
+    launchScale.value = withTiming(1.08, {
+      duration: 420,
+      easing: Easing.out(Easing.cubic),
+    });
+
+    setTimeout(() => {
+      router.push({
+        pathname: "/chapter/[id]",
+        params: {
+          id: chapter.id,
+          lessonId: lesson.id,
+          lessonSlug: lesson.slug,
+          lessonTitle: lesson.title,
+          lessonCoverImage: lesson.coverImage ?? undefined,
+          chapterCoverImage: coverImage ?? undefined,
+          mode: options?.replay ? "replay" : undefined,
+        },
+      });
+    }, 120);
+  };
+
+  const openChapterQuiz = (chapter: LessonFull["chapters"][number]) => {
+    if (!hasHearts) {
+      setShowHeartGate(true);
+      return;
+    }
+
+    const coverImage = getChapterCover(chapter, lesson.coverImage);
+    setCompletedChapterChoice(null);
+    router.push({
+      pathname: "/chapter/quiz-intro/[id]",
+      params: {
+        id: chapter.id,
+        lessonId: lesson.id,
+        lessonSlug: lesson.slug,
+        lessonTitle: lesson.title,
+        lessonCoverImage: lesson.coverImage ?? undefined,
+        chapterCoverImage: coverImage ?? undefined,
+        mode: "replay",
+      },
+    });
+  };
+
+  const startLesson = () => {
     const activeChapter =
       (completedChapterIds.length === sortedChapters.length &&
       sortedChapters.length > 0
@@ -158,19 +280,10 @@ export default function LessonStoryScreen() {
       sortedChapters[0];
     if (!activeChapter) return;
 
-    router.push({
-      pathname: "/chapter/[id]",
-      params: {
-        id: activeChapter.id,
-        lessonId: lesson.id,
-        lessonSlug: lesson.slug,
-        lessonTitle: lesson.title,
-        mode:
-          completedChapterIds.length === sortedChapters.length &&
-          sortedChapters.length > 0
-            ? "replay"
-            : undefined,
-      },
+    openChapter(activeChapter, {
+      replay:
+        completedChapterIds.length === sortedChapters.length &&
+        sortedChapters.length > 0,
     });
   };
 
@@ -200,7 +313,7 @@ export default function LessonStoryScreen() {
             />
           </Pressable>
           <Animated.Text style={[styles.topBarTitle, headerTitleStyle]}>
-            {lesson.title}
+            {lesson.title}: {lesson.subtitle}
           </Animated.Text>
           <View style={styles.topSpacer} />
         </View>
@@ -213,29 +326,24 @@ export default function LessonStoryScreen() {
         contentContainerStyle={styles.content}
       >
         <View style={[styles.hero, { height: HERO_HEIGHT + insets.top + 24 }]}>
-          <View />
+          <Animated.View style={[styles.heroFooter, titleLiftStyle]}>
+            <Text style={styles.heroTitle}>{lesson.title}</Text>
+            <Text style={styles.heroCopy}>{lesson.subtitle}</Text>
+          </Animated.View>
         </View>
 
         <View style={styles.card}>
-          <View style={styles.lessonIntroCard}>
-            <Text style={styles.lessonIntroEyebrow}>Story Lesson</Text>
-            <Text style={styles.lessonIntroTitle}>{lesson.title}</Text>
-            {lesson.hook ? (
-              <Text style={styles.lessonIntroHook}>{lesson.hook}</Text>
-            ) : null}
-            {/* <Text style={styles.lessonIntroDescription}>
-              {lesson.description ||
-                "A chaptered lesson told like a cinematic story."}
-            </Text> */}
-          </View>
+          {lesson.content || lesson.description ? (
+            <View style={styles.summaryPanel}>
+              <Text style={styles.summaryText}>{lesson.hook}</Text>
+            </View>
+          ) : null}
 
-          <View style={styles.summaryPanel}>
-            <Text style={styles.summaryText}>
-              {lesson.content ||
-                lesson.description ||
-                "This story unfolds scene by scene, letting you read, decide, and remember what matters."}
-            </Text>
-          </View>
+          {lesson.content || lesson.description ? (
+            <View style={styles.summaryPanel}>
+              <Text style={styles.summaryText}>{lesson.description}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.metaRow}>
             <View style={styles.metaCard}>
@@ -270,10 +378,7 @@ export default function LessonStoryScreen() {
               const chapterProgressRatio = isCompleted
                 ? 1
                 : chapterProgress
-                  ? Math.min(
-                      chapterProgress.currentStepIndex / totalSteps,
-                      1,
-                    )
+                  ? Math.min(chapterProgress.currentStepIndex / totalSteps, 1)
                   : 0;
 
               return (
@@ -281,20 +386,7 @@ export default function LessonStoryScreen() {
                   key={chapter.id}
                   disabled={!isAccessible}
                   onPress={() => {
-                    if (!hasHearts) {
-                      setShowHeartGate(true);
-                      return;
-                    }
-
-                    router.push({
-                      pathname: "/chapter/[id]",
-                      params: {
-                        id: chapter.id,
-                        lessonId: lesson.id,
-                        lessonSlug: lesson.slug,
-                        lessonTitle: lesson.title,
-                      },
-                    });
+                    openChapter(chapter);
                   }}
                   style={({ pressed }) => [
                     styles.chapterCard,
@@ -304,10 +396,12 @@ export default function LessonStoryScreen() {
                 >
                   <ImageBackground
                     source={
-                      lesson.coverImage ? { uri: lesson.coverImage } : undefined
+                      getChapterCover(chapter, lesson.coverImage)
+                        ? { uri: getChapterCover(chapter, lesson.coverImage)! }
+                        : undefined
                     }
                     style={styles.chapterHero}
-                    imageStyle={styles.chapterHeroImage}
+                    contentFit="cover"
                   >
                     <View style={styles.chapterHeroShade} />
                     {!isAccessible ? (
@@ -399,6 +493,48 @@ export default function LessonStoryScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={Boolean(completedChapterChoice)}
+        onRequestClose={() => setCompletedChapterChoice(null)}
+      >
+        <View style={styles.modalScrim}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Chapter complete</Text>
+            <Text style={styles.modalCopy}>
+              Restart the story scene, or jump straight into the quiz without
+              changing your saved progress.
+            </Text>
+            <Pressable
+              onPress={() => {
+                const chapter = completedChapterChoice;
+                setCompletedChapterChoice(null);
+                if (chapter) {
+                  openChapter(chapter, {
+                    replay: true,
+                    skipCompletedPrompt: true,
+                  });
+                }
+              }}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonText}>Restart chapter</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (completedChapterChoice) {
+                  openChapterQuiz(completedChapterChoice);
+                }
+              }}
+              style={styles.modalSecondaryButton}
+            >
+              <Text style={styles.modalSecondaryButtonText}>Go to quiz</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -413,6 +549,34 @@ const styles = StyleSheet.create({
     backgroundColor: "#21051f",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  loadingCover: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+  },
+  loadingFallback: {
+    backgroundColor: palette.plum,
+  },
+  loadingShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(20, 11, 28, 0.58)",
+  },
+  loadingContent: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    paddingHorizontal: 28,
+    zIndex: 10,
+  },
+  loadingTitle: {
+    color: "#ffffff",
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: "900",
+    marginTop: 10,
+    textAlign: "center",
+    textTransform: "capitalize",
   },
   content: {
     paddingBottom: 120,
@@ -427,6 +591,44 @@ const styles = StyleSheet.create({
   },
   hero: {
     justifyContent: "space-between",
+  },
+  heroFooter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingBottom: 48,
+    gap: 8,
+  },
+  heroEyebrow: {
+    alignSelf: "flex-start",
+    overflow: "hidden",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.54)",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  heroTitle: {
+    color: "#ffffff",
+    fontSize: 36,
+    lineHeight: 40,
+    fontWeight: "900",
+    maxWidth: "88%",
+  },
+  heroCopy: {
+    color: "#efe4f1",
+    fontSize: 30,
+    lineHeight: 35,
+    fontWeight: "400",
+    maxWidth: "92%",
   },
   heroImageFill: {
     ...StyleSheet.absoluteFillObject,
@@ -490,39 +692,6 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 24,
     gap: 20,
-  },
-  lessonIntroCard: {
-    backgroundColor: palette.paperSoft,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: palette.line,
-    padding: 20,
-    gap: 10,
-  },
-  lessonIntroEyebrow: {
-    color: "#d67d37",
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 1.1,
-  },
-  lessonIntroTitle: {
-    color: palette.ink,
-    fontSize: 34,
-    lineHeight: 40,
-    fontWeight: "900",
-  },
-  lessonIntroHook: {
-    color: palette.navy,
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: "700",
-  },
-  lessonIntroDescription: {
-    color: palette.inkSoft,
-    fontSize: 15,
-    lineHeight: 24,
-    fontWeight: "600",
   },
   summaryPanel: {
     backgroundColor: palette.paperSoft,
@@ -597,9 +766,6 @@ const styles = StyleSheet.create({
     height: 170,
     padding: 14,
     backgroundColor: palette.plum,
-  },
-  chapterHeroImage: {
-    resizeMode: "cover",
   },
   chapterHeroShade: {
     ...StyleSheet.absoluteFillObject,
@@ -723,6 +889,58 @@ const styles = StyleSheet.create({
   modalMeta: {
     color: palette.inkSoft,
     fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
+  modalSecondaryButton: {
+    minHeight: 54,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalSecondaryButtonText: {
+    color: palette.navy,
+    fontSize: 16,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.35,
+  },
+  launchOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: palette.plum,
+  },
+  launchImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+  },
+  launchShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(20, 11, 28, 0.62)",
+  },
+  launchContent: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingHorizontal: 28,
+  },
+  launchTitle: {
+    color: "#ffffff",
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  launchCopy: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 14,
     lineHeight: 20,
     fontWeight: "700",
   },

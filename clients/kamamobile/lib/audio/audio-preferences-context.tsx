@@ -11,6 +11,8 @@ export type AudioPreferences = {
   autoPlayNarration: boolean;
   narrationVolume: number;
   narrationSpeed: number;
+  narrationStartDelaySeconds: number;
+  narrationVoiceIdentifier: string | null;
   soundEffectsVolume: number;
   backgroundMusicVolume: number;
 };
@@ -28,6 +30,8 @@ export const defaultAudioPreferences: AudioPreferences = {
   autoPlayNarration: true,
   narrationVolume: 1,
   narrationSpeed: 1,
+  narrationStartDelaySeconds: 2,
+  narrationVoiceIdentifier: null,
   soundEffectsVolume: 0.4,
   backgroundMusicVolume: 0.25,
 };
@@ -73,12 +77,16 @@ export function AudioPreferencesProvider({
   }, []);
 
   async function updatePreferences(next: Partial<AudioPreferences>) {
-    const merged = {
-      ...preferences,
-      ...next,
-    };
+    let merged: AudioPreferences = defaultAudioPreferences;
 
-    setPreferences(merged);
+    setPreferences((current) => {
+      merged = {
+        ...current,
+        ...next,
+      };
+
+      return merged;
+    });
 
     try {
       await AsyncStorage.setItem(

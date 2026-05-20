@@ -18,6 +18,7 @@ interface Props {
   secondaryIconOnly?: boolean;
   countdownSeconds?: number | null;
   countdownLabel?: string;
+  countdownPaused?: boolean;
   loading?: boolean;
   disabled?: boolean;
   tertiaryLabel?: string;
@@ -39,7 +40,7 @@ export function ContinueButtonStep({
   secondaryIconName = "arrow-back-ios-new",
   secondaryIconOnly = false,
   countdownSeconds,
-  countdownLabel,
+  countdownPaused,
   loading,
   disabled,
   tertiaryLabel,
@@ -52,17 +53,17 @@ export function ContinueButtonStep({
   const resolvedTitle = title ?? t("story.readyToContinue");
   const resolvedSubtitle = subtitle ?? t("story.nextSceneWaiting");
   const resolvedBody = body ?? t("story.nextBeatBody");
-  const resolvedCountdownLabel = countdownLabel ?? t("story.autoContinuing");
+  const primaryAction = onComplete ?? (() => {});
+  const fixedPrimaryLabel =
+    typeof countdownSeconds === "number"
+      ? countdownPaused
+        ? `${resolvedLabel} - paused`
+        : `${resolvedLabel} in ${countdownSeconds}s`
+      : resolvedLabel;
 
   if (fixed) {
     return (
       <View style={styles.fixedShell}>
-        {typeof countdownSeconds === "number" ? (
-          <Text style={styles.countdownText}>
-            {`${resolvedCountdownLabel} in ${countdownSeconds}s`}
-          </Text>
-        ) : null}
-
         <View style={styles.fixedActions}>
           {secondaryLabel && onSecondaryPress ? (
             <Pressable
@@ -103,8 +104,8 @@ export function ContinueButtonStep({
             </Pressable>
           ) : null}
           <StoryPrimaryButton
-            label={resolvedLabel}
-            onPress={onComplete ?? (() => {})}
+            label={fixedPrimaryLabel}
+            onPress={primaryAction}
             loading={loading}
             disabled={disabled}
           />
@@ -154,14 +155,6 @@ const styles = StyleSheet.create({
   },
   fixedShell: {
     gap: 10,
-  },
-  countdownText: {
-    color: "#6e7a90",
-    fontSize: 12,
-    fontWeight: "800",
-    textAlign: "center",
-    letterSpacing: 0.2,
-    textTransform: "uppercase",
   },
   fixedActions: {
     flexDirection: "row",

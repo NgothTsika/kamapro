@@ -19,15 +19,18 @@ import { useProfilePreferences } from "@/lib/profile/profile-preferences-context
 import {
   getCharacters,
   getDashboard,
+  getAchievementsCatalog,
+  getEarnedAchievements,
   getInProgressLessons,
   getLessons,
+  type Achievement,
   type Character,
   type DashboardData,
+  type EarnedAchievement,
   type LessonProgressDetail,
   type LessonSummary,
 } from "@/lib";
 import {
-  buildDerivedBadges,
   formatCompactNumber,
   formatMemberSince,
   getDisplayName,
@@ -92,10 +95,15 @@ function BadgePreviewCard({
 }: {
   title: string;
   detail: string;
-  icon: keyof typeof MaterialIcons.glyphMap;
+  icon?: string | null;
   accent: string;
   unlocked: boolean;
 }) {
+  const iconName =
+    icon && MaterialIcons.glyphMap[icon as keyof typeof MaterialIcons.glyphMap]
+      ? (icon as keyof typeof MaterialIcons.glyphMap)
+      : "emoji-events";
+
   return (
     <View
       style={[
@@ -112,7 +120,7 @@ function BadgePreviewCard({
           ]}
         >
           <MaterialIcons
-            name={icon}
+            name={iconName}
             size={18}
             color={unlocked ? accent : storyTheme.inkSoft}
           />
@@ -125,6 +133,13 @@ function BadgePreviewCard({
       <Text style={styles.achievementDetail}>{detail}</Text>
     </View>
   );
+}
+
+function getBadgeRequirementText(badge: Achievement) {
+  const parts = [];
+  if (badge.xpRequired) parts.push(`${badge.xpRequired} XP`);
+  if (badge.streakRequired) parts.push(`${badge.streakRequired} day streak`);
+  return parts.length > 0 ? parts.join(" + ") : "Special milestone";
 }
 
 export default function ProfileScreen() {
@@ -142,6 +157,12 @@ export default function ProfileScreen() {
     LessonProgressDetail[]
   >([]);
   const [lessons, setLessons] = useState<LessonSummary[]>([]);
+  const [achievementCatalog, setAchievementCatalog] = useState<Achievement[]>(
+    [],
+  );
+  const [earnedAchievements, setEarnedAchievements] = useState<
+    EarnedAchievement[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -160,20 +181,30 @@ export default function ProfileScreen() {
       }
 
       try {
-        const [nextDashboard, allCharacters, progressLessons, allLessons] =
-          await Promise.all([
-            getDashboard(token).catch(() => null),
-            getCharacters().catch(() => [] as Character[]),
-            getInProgressLessons(token).catch(
-              () => [] as LessonProgressDetail[],
-            ),
-            getLessons().catch(() => [] as LessonSummary[]),
-          ]);
+        const [
+          nextDashboard,
+          allCharacters,
+          progressLessons,
+          allLessons,
+          catalog,
+          earned,
+        ] = await Promise.all([
+          getDashboard(token).catch(() => null),
+          getCharacters().catch(() => [] as Character[]),
+          getInProgressLessons(token).catch(
+            () => [] as LessonProgressDetail[],
+          ),
+          getLessons().catch(() => [] as LessonSummary[]),
+          getAchievementsCatalog().catch(() => [] as Achievement[]),
+          getEarnedAchievements(token).catch(() => [] as EarnedAchievement[]),
+        ]);
 
         setDashboard(nextDashboard);
         setCharacters(allCharacters);
         setInProgressLessons(progressLessons);
         setLessons(allLessons);
+        setAchievementCatalog(catalog);
+        setEarnedAchievements(earned);
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -227,7 +258,18 @@ export default function ProfileScreen() {
   );
   const unlockedCount = characters.length - lockedCharacters.length;
   const lockedCount = lockedCharacters.length;
-  const badges = useMemo(() => buildDerivedBadges(dashboard), [dashboard]);
+  const earnedAchievementIds = useMemo(
+    () => new Set(earnedAchievements.map((item) => item.achievement.id)),
+    [earnedAchievements],
+  );
+  const badges = useMemo(
+    () =>
+      achievementCatalog.map((badge) => ({
+        ...badge,
+        unlocked: earnedAchievementIds.has(badge.id),
+      })),
+    [achievementCatalog, earnedAchievementIds],
+  );
   const unlockedBadgeCount = badges.filter((badge) => badge.unlocked).length;
   const continueLesson = inProgressLessons[0]?.lesson ?? null;
   const suggestedLesson = continueLesson ?? lessons[0] ?? null;
@@ -399,7 +441,7 @@ export default function ProfileScreen() {
               </Text>
             </View>
             <Pressable
-              onPress={() => router.push("/profile/achievements")}
+              onPress={() => router.push("/achievements")}
               style={({ pressed }) => [
                 styles.inlineButton,
                 pressed && styles.pressed,
@@ -435,10 +477,12 @@ export default function ProfileScreen() {
             {badges.map((badge) => (
               <BadgePreviewCard
                 key={badge.id}
-                title={badge.title}
-                detail={badge.detail}
-                icon={badge.icon as keyof typeof MaterialIcons.glyphMap}
-                accent={badge.accent}
+                title={badge.name}
+                detail={
+                  badge.unlocked ? "Unlocked" : getBadgeRequirementText(badge)
+                }
+                icon={badge.icon}
+                accent="#377dff"
                 unlocked={badge.unlocked}
               />
             ))}

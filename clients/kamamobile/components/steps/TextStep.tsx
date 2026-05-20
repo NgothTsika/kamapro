@@ -13,11 +13,21 @@ interface Props {
   content: any;
   onComplete: () => void;
   showAction?: boolean;
+  hideBody?: boolean;
 }
 
-export function TextStep({ content, onComplete, showAction = true }: Props) {
+export function TextStep({
+  content,
+  onComplete,
+  showAction = true,
+  hideBody = false,
+}: Props) {
   const { t } = useTranslation();
-  const paragraphs = getParagraphs(content.body, content.details);
+  const paragraphs = getParagraphs(
+    content.paragraphs,
+    content.body,
+    content.details,
+  );
 
   return (
     <View style={styles.container}>
@@ -27,7 +37,7 @@ export function TextStep({ content, onComplete, showAction = true }: Props) {
         title={content.title}
         subtitle={content.subtitle}
       />
-      <StoryParagraphs paragraphs={paragraphs} />
+      {!hideBody ? <StoryParagraphs paragraphs={paragraphs} /> : null}
       {content.callout ? (
         <View style={styles.callout}>
           <Text style={styles.calloutText}>{content.callout}</Text>

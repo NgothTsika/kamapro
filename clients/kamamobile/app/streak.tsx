@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -48,6 +49,9 @@ export default function StreakScreen() {
   const [lessons, setLessons] = useState<LessonSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [calendarViewDate, setCalendarViewDate] = useState(() => new Date());
+  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+  const [modalCalendarDate, setModalCalendarDate] = useState(() => new Date());
 
   const load = useCallback(
     async (isRefresh?: boolean) => {
@@ -99,7 +103,14 @@ export default function StreakScreen() {
     () => buildWeeklyActivity(dashboard),
     [dashboard],
   );
-  const calendar = useMemo(() => buildMonthCalendar(dashboard), [dashboard]);
+  const calendar = useMemo(
+    () => buildMonthCalendar(dashboard, calendarViewDate),
+    [calendarViewDate, dashboard],
+  );
+  const modalCalendar = useMemo(
+    () => buildMonthCalendar(dashboard, modalCalendarDate),
+    [modalCalendarDate, dashboard],
+  );
   const activeDays = weeklyActivity.filter((item) => item.isComplete).length;
   const totalLessons = dashboard?.stats?.totalLessonsCompleted ?? 0;
   const totalQuizzes = dashboard?.stats?.totalQuizzesCompleted ?? 0;
@@ -108,6 +119,21 @@ export default function StreakScreen() {
   const suggestedLesson = continueLesson ?? lessons[0] ?? null;
   const streakMessage = getStreakMessage(dashboard);
   const weeklyInsight = getWeeklyInsight(dashboard);
+  const isCurrentMonth =
+    calendarViewDate.getFullYear() === new Date().getFullYear() &&
+    calendarViewDate.getMonth() === new Date().getMonth();
+  const shiftCalendarMonth = useCallback((offset: number) => {
+    setCalendarViewDate(
+      (current) =>
+        new Date(current.getFullYear(), current.getMonth() + offset, 1, 12),
+    );
+  }, []);
+  const shiftModalCalendarMonth = useCallback((offset: number) => {
+    setModalCalendarDate(
+      (current) =>
+        new Date(current.getFullYear(), current.getMonth() + offset, 1, 12),
+    );
+  }, []);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -171,10 +197,10 @@ export default function StreakScreen() {
 
         <View style={styles.panel}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>This Week</Text>
+            <Text style={styles.sectionTitle}>Streak Calendar</Text>
             <Text style={styles.sectionCopy}>
-              A simple weekly strip makes it easier to see whether today still
-              needs a check-in.
+              Weekly focus and monthly history live together, so the habit is
+              easy to scan without repeating the same calendar twice.
             </Text>
           </View>
 
@@ -187,67 +213,29 @@ export default function StreakScreen() {
             {weeklyActivity.map((item) => (
               <View key={item.key} style={styles.dayCell}>
                 <Text style={styles.dayLabel}>{item.label}</Text>
-                <View
-                  style={[
-                    styles.dayCircle,
-                    item.isComplete && styles.dayCircleComplete,
-                    item.isToday && styles.dayCircleToday,
-                  ]}
+                <Pressable
+                  onPress={() => {
+                    setModalCalendarDate(calendarViewDate);
+                    setIsCalendarModalOpen(true);
+                  }}
                 >
-                  <Text
-                    style={[
-                      styles.dayValue,
-                      item.isComplete && styles.dayValueComplete,
-                    ]}
-                  >
-                    {item.dayNumber}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.panel}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Streak Calendar</Text>
-            <Text style={styles.sectionCopy}>
-              Monthly visibility helps the habit feel real and gives this screen
-              a more premium utility.
-            </Text>
-          </View>
-
-          <Text style={styles.calendarMonth}>{calendar.monthLabel}</Text>
-          <View style={styles.calendarHeaderRow}>
-            {["S", "M", "T", "W", "T", "F", "S"].map((label, index) => (
-              <Text key={`${label}-${index}`} style={styles.calendarHeaderText}>
-                {label}
-              </Text>
-            ))}
-          </View>
-          <View style={styles.calendarGrid}>
-            {calendar.days.map((day) => (
-              <View key={day.key} style={styles.calendarCell}>
-                {day.value ? (
                   <View
                     style={[
-                      styles.calendarBubble,
-                      day.isComplete && styles.calendarBubbleComplete,
-                      day.isToday && styles.calendarBubbleToday,
+                      styles.dayCircle,
+                      item.isComplete && styles.dayCircleComplete,
+                      item.isToday && styles.dayCircleToday,
                     ]}
                   >
                     <Text
                       style={[
-                        styles.calendarValue,
-                        day.isComplete && styles.calendarValueComplete,
+                        styles.dayValue,
+                        item.isComplete && styles.dayValueComplete,
                       ]}
                     >
-                      {day.value}
+                      {item.dayNumber}
                     </Text>
                   </View>
-                ) : (
-                  <View style={styles.calendarBubbleEmpty} />
-                )}
+                </Pressable>
               </View>
             ))}
           </View>
@@ -266,6 +254,97 @@ export default function StreakScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={isCalendarModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsCalendarModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{modalCalendar.monthLabel}</Text>
+              <Pressable
+                onPress={() => setIsCalendarModalOpen(false)}
+                style={({ pressed }) => [
+                  styles.modalCloseButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <MaterialIcons name="close" size={24} color={storyTheme.ink} />
+              </Pressable>
+            </View>
+
+            <View style={styles.modalNavRow}>
+              <Pressable
+                onPress={() => shiftModalCalendarMonth(-1)}
+                style={({ pressed }) => [
+                  styles.modalNavButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <MaterialIcons
+                  name="chevron-left"
+                  size={24}
+                  color={storyTheme.ink}
+                />
+              </Pressable>
+              <Pressable
+                onPress={() => shiftModalCalendarMonth(1)}
+                style={({ pressed }) => [
+                  styles.modalNavButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <MaterialIcons
+                  name="chevron-right"
+                  size={24}
+                  color={storyTheme.ink}
+                />
+              </Pressable>
+            </View>
+
+            <View style={styles.calendarHeaderRow}>
+              {["S", "M", "T", "W", "T", "F", "S"].map((label, index) => (
+                <Text
+                  key={`${label}-${index}`}
+                  style={styles.calendarHeaderText}
+                >
+                  {label}
+                </Text>
+              ))}
+            </View>
+
+            <View style={styles.modalCalendarGrid}>
+              {modalCalendar.days.map((day) => (
+                <View key={day.key} style={styles.modalCalendarCell}>
+                  {day.value ? (
+                    <View
+                      style={[
+                        styles.modalCalendarBubble,
+                        day.isComplete && styles.modalCalendarBubbleComplete,
+                        day.isToday && styles.modalCalendarBubbleToday,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.calendarValue,
+                          day.isComplete && styles.calendarValueComplete,
+                        ]}
+                      >
+                        {day.value}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.modalCalendarBubbleEmpty} />
+                  )}
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -452,10 +531,43 @@ const styles = StyleSheet.create({
   dayValueComplete: {
     color: storyTheme.plumDark,
   },
+  calendarTitleRow: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  calendarControlsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  calendarExpandButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: storyTheme.mint,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calendarArrowButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: storyTheme.white,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e6d6c0",
+  },
+  calendarArrowButtonDisabled: {
+    opacity: 0.42,
+  },
   calendarMonth: {
     color: storyTheme.plum,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "900",
   },
   calendarHeaderRow: {
     flexDirection: "row",
@@ -504,6 +616,89 @@ const styles = StyleSheet.create({
   calendarValueComplete: {
     color: storyTheme.plumDark,
     fontWeight: "900",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: storyTheme.paper,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 32,
+    maxHeight: "90%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  modalTitle: {
+    color: storyTheme.plum,
+    fontSize: 22,
+    fontWeight: "900",
+    flex: 1,
+  },
+  modalCloseButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: storyTheme.white,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e6d6c0",
+  },
+  modalNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 24,
+    marginBottom: 20,
+  },
+  modalNavButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: storyTheme.white,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e6d6c0",
+  },
+  modalCalendarGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  modalCalendarCell: {
+    width: "14.28%",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  modalCalendarBubble: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: storyTheme.white,
+    borderWidth: 1,
+    borderColor: "#e6d6c0",
+  },
+  modalCalendarBubbleComplete: {
+    backgroundColor: "#ffe58f",
+    borderColor: "#ffe58f",
+  },
+  modalCalendarBubbleToday: {
+    borderWidth: 2,
+    borderColor: "#ff9c48",
+  },
+  modalCalendarBubbleEmpty: {
+    width: 48,
+    height: 48,
   },
   statsRow: {
     flexDirection: "row",

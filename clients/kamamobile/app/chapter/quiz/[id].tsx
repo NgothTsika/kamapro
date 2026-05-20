@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Image,
@@ -13,12 +19,12 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Audio } from "expo-av";
 import { kama } from "../../../lib/kama-api";
 import type { Chapter } from "../../../lib/types";
 import { storyTheme } from "../../../components/ui/story-theme";
 import { useChapterProgress } from "../../../hooks/useChapterProgress";
 import { useHeartsState } from "../../../hooks/useHeartsState";
-import { useLessonEffects } from "../../../hooks/useLessonEffects";
 import {
   normalizeOptionImages,
   normalizeQuizType,
@@ -32,20 +38,27 @@ import {
 import { loadToken } from "../../../lib/auth/token-storage";
 import { AnimatedLessonProgressBar } from "../../../components/lesson/AnimatedLessonProgressBar";
 import { useLocale } from "@/lib/auth/locale-context";
+import { useAudioPreferences } from "@/lib/audio/audio-preferences-context";
 
 export default function ChapterQuizPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id, lessonId, lessonSlug, lessonTitle, mode } = useLocalSearchParams<{
-    id: string;
-    lessonId: string;
-    lessonSlug?: string;
-    lessonTitle?: string;
-    mode?: string;
-  }>();
+  const { id, lessonId, lessonSlug, lessonTitle, lessonCoverImage, mode } =
+    useLocalSearchParams<{
+      id: string;
+      lessonId: string;
+      lessonSlug?: string;
+      lessonTitle?: string;
+      lessonCoverImage?: string;
+      mode?: string;
+    }>();
   const replayMode = mode === "replay";
   const { currentLanguage } = useLocale();
+  const { preferences } = useAudioPreferences();
   const [chapter, setChapter] = useState<Chapter | null>(null);
+  const [quizQueue, setQuizQueue] = useState<NonNullable<Chapter["quizzes"]>>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
   const [quizSessionId, setQuizSessionId] = useState<string | null>(null);
@@ -54,6 +67,8 @@ export default function ChapterQuizPage() {
   const [quizFeedback, setQuizFeedback] = useState<{
     kind: "correct" | "incorrect" | "failed";
     message: string;
+    correctOption?: number | null;
+    correctAnswer?: string | null;
     heartsRemaining?: number;
   } | null>(null);
   const [showHeartGate, setShowHeartGate] = useState(false);
@@ -65,12 +80,88 @@ export default function ChapterQuizPage() {
     hasHearts,
   } = useHeartsState();
   const { lessonProgress } = useChapterProgress(id || "", lessonId || "");
-  const { playEffect } = useLessonEffects();
+  const sessionRequestRef = useRef<Promise<string | null> | null>(null);
+  const songSoundRef = useRef<Audio.Sound | null>(null);
+  const backgroundMusicRef = useRef<Audio.Sound | null>(null);
+  const soundEffectsVolumeRef = useRef(preferences.soundEffectsVolume);
+  const backgroundMusicVolumeRef = useRef(preferences.backgroundMusicVolume);
+
+  useEffect(() => {
+    soundEffectsVolumeRef.current = preferences.soundEffectsVolume;
+  }, [preferences.soundEffectsVolume]);
+
+  useEffect(() => {
+    backgroundMusicVolumeRef.current = preferences.backgroundMusicVolume;
+  }, [preferences.backgroundMusicVolume]);
+
+  // Play song effect helper function
+  const playSongEffect = async (songSource: any, volume = 0.7) => {
+    try {
+      // Stop any currently playing song
+      if (songSoundRef.current) {
+        await songSoundRef.current.unloadAsync();
+        songSoundRef.current = null;
+      }
+
+      const { sound } = await Audio.Sound.createAsync(songSource, {
+        shouldPlay: true,
+        volume: volume * soundEffectsVolumeRef.current,
+      });
+      songSoundRef.current = sound;
+    } catch (error) {
+      console.error("Error playing song effect:", error);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
     void fetchChapter(id);
   }, [currentLanguage, id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Audio.Sound.createAsync(require("@/assets/SongEffects/quiz_sound.mp3"), {
+      shouldPlay: true,
+      isLooping: true,
+      volume: 0.18 * backgroundMusicVolumeRef.current,
+    })
+      .then(({ sound }) => {
+        if (cancelled) {
+          void sound.unloadAsync();
+          return;
+        }
+        backgroundMusicRef.current = sound;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      if (backgroundMusicRef.current) {
+        void backgroundMusicRef.current.unloadAsync();
+        backgroundMusicRef.current = null;
+      }
+      if (songSoundRef.current) {
+        void songSoundRef.current.unloadAsync();
+        songSoundRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    void backgroundMusicRef.current
+      ?.setVolumeAsync(0.18 * preferences.backgroundMusicVolume)
+      .catch(() => undefined);
+  }, [preferences.backgroundMusicVolume]);
+
+  useEffect(() => {
+    setQuizQueue(chapter?.quizzes ?? []);
+    setCurrentQuizIndex(0);
+    setQuizSessionId(null);
+    setQuizFeedback(null);
+    setSelectedOption(null);
+    sessionRequestRef.current = null;
+  }, [chapter?.id, chapter?.quizzes]);
 
   useEffect(() => {
     if (!showHeartGate) return;
@@ -102,14 +193,14 @@ export default function ChapterQuizPage() {
     }
   }
 
-  const chapterQuizzes = chapter?.quizzes ?? [];
+  const chapterQuizzes = quizQueue;
   const currentQuiz = chapterQuizzes[currentQuizIndex];
   const progressRatio =
     chapterQuizzes.length > 0
       ? Math.min((currentQuizIndex + 1) / chapterQuizzes.length, 1)
       : 0;
   const visibleHeartCount = Math.max(0, userHearts?.hearts ?? 0);
-  const maxHeartCount = Math.max(visibleHeartCount, userHearts?.maxHearts ?? 5);
+  const maxHeartCount = Math.max(visibleHeartCount, userHearts?.maxHearts ?? 3);
   const optionImages = useMemo(
     () =>
       normalizeOptionImages(
@@ -126,16 +217,52 @@ export default function ChapterQuizPage() {
     quizType === "image_choice" &&
     optionImages.some(Boolean) &&
     optionImages.length === (currentQuiz?.options?.length ?? 0);
-  const canValidate =
-    selectedOption !== null &&
-    !quizFeedback &&
-    !quizSubmitting &&
-    visibleHeartCount > 0;
+  const hasAnswered = Boolean(quizFeedback);
 
   const nextHeartLabel = formatTimeRemaining(
     userHearts?.nextRecoveryAt,
     heartGateNow,
   );
+
+  const ensureQuizSession = useCallback(async () => {
+    if (!currentQuiz) return null;
+    if (quizSessionId) return quizSessionId;
+    if (sessionRequestRef.current) return sessionRequestRef.current;
+
+    sessionRequestRef.current = (async () => {
+      const token = await loadToken();
+      if (!token) return null;
+
+      try {
+        const session = await startQuizSession(token, currentQuiz.id);
+        setQuizSessionId(session.sessionId);
+        return session.sessionId;
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 400) {
+          await refreshHearts();
+          setQuizFeedback({
+            kind: "failed",
+            message:
+              "You are out of hearts. Wait for the next one or upgrade to premium when it is available.",
+          });
+          setShowHeartGate(true);
+          return null;
+        }
+        throw err;
+      } finally {
+        sessionRequestRef.current = null;
+      }
+    })();
+
+    return sessionRequestRef.current;
+  }, [currentQuiz, quizSessionId, refreshHearts]);
+
+  useEffect(() => {
+    if (!currentQuiz || quizFeedback || visibleHeartCount <= 0) return;
+    void ensureQuizSession().catch((err) => {
+      console.error("Failed to prepare quiz session:", err);
+    });
+  }, [currentQuiz, ensureQuizSession, quizFeedback, visibleHeartCount]);
 
   function applyHeartState(nextState?: typeof userHearts | null) {
     if (!nextState) return;
@@ -157,6 +284,8 @@ export default function ChapterQuizPage() {
           lessonId: lessonId || chapter?.lessonId || "",
           lessonSlug,
           lessonTitle,
+          lessonCoverImage,
+          chapterCoverImage: nextChapter.coverImage ?? chapter?.coverImage,
           mode: replayMode ? "replay" : undefined,
         },
       });
@@ -165,7 +294,7 @@ export default function ChapterQuizPage() {
 
     let xpEarned = 0;
     const token = await loadToken();
-    if (token && lessonId) {
+    if (!replayMode && token && lessonId) {
       try {
         const result = await completeLesson(token, lessonId);
         xpEarned = result.xpEarned;
@@ -181,6 +310,7 @@ export default function ChapterQuizPage() {
           slug: lessonSlug,
           lessonId,
           lessonTitle,
+          lessonCoverImage,
           xpEarned: String(xpEarned),
           firstChapterId: lessonProgress?.lesson.chapters?.[0]?.id,
         },
@@ -195,12 +325,21 @@ export default function ChapterQuizPage() {
     lessonProgress?.lesson.chapters,
     lessonSlug,
     lessonTitle,
+    lessonCoverImage,
     replayMode,
     router,
   ]);
 
   async function submitQuizAnswer(optionIndex: number) {
-    if (!currentQuiz || quizSubmitting) return;
+    if (
+      !currentQuiz ||
+      quizSubmitting ||
+      quizFeedback ||
+      visibleHeartCount <= 0
+    ) {
+      if (visibleHeartCount <= 0) setShowHeartGate(true);
+      return;
+    }
 
     const token = await loadToken();
     if (!token) return;
@@ -208,27 +347,37 @@ export default function ChapterQuizPage() {
     try {
       setQuizSubmitting(true);
       setQuizFeedback(null);
+      setSelectedOption(optionIndex);
 
-      let activeSessionId = quizSessionId;
-      if (!activeSessionId) {
-        try {
-          const session = await startQuizSession(token, currentQuiz.id);
-          activeSessionId = session.sessionId;
-          setQuizSessionId(session.sessionId);
-        } catch (err) {
-          if (err instanceof ApiError && err.status === 400) {
-            await refreshHearts();
-            setQuizFeedback({
-              kind: "failed",
-              message:
-                "You are out of hearts. Wait for the next one or upgrade to premium when it is available.",
-            });
-            setShowHeartGate(true);
-            return;
-          }
-          throw err;
+      let usedLocalValidation = false;
+      let localAnswerWasCorrect = false;
+
+      if (typeof currentQuiz.correctOption === "number") {
+        usedLocalValidation = true;
+        localAnswerWasCorrect = optionIndex === currentQuiz.correctOption;
+        setQuizFeedback({
+          kind: localAnswerWasCorrect ? "correct" : "incorrect",
+          message: localAnswerWasCorrect
+            ? currentQuiz.explanation || "Correct. You can move on."
+            : currentQuiz.explanation ||
+              "Not quite. This one will return at the end.",
+          correctOption: currentQuiz.correctOption,
+          correctAnswer: currentQuiz.options[currentQuiz.correctOption],
+          heartsRemaining: userHearts?.hearts,
+        });
+
+        if (!localAnswerWasCorrect) {
+          setQuizQueue((current) => [...current, currentQuiz]);
+          await playSongEffect(require("@/assets/SongEffects/fail.mp3"), 0.6);
+        } else {
+          await playSongEffect(require("@/assets/SongEffects/Correct.mp3"), 0.8);
         }
+
+        setQuizSubmitting(false);
       }
+
+      const activeSessionId = await ensureQuizSession();
+      if (!activeSessionId) return;
 
       const result = await answerQuiz(token, activeSessionId, optionIndex);
       applyHeartState(result.heartState);
@@ -236,15 +385,60 @@ export default function ChapterQuizPage() {
         await refreshHearts();
       }
 
+      if (usedLocalValidation) {
+        setQuizSessionId(null);
+
+        if ((result.heartState?.hearts ?? result.heartsRemaining) <= 0) {
+          setQuizFeedback((current) => ({
+            kind: "failed",
+            message:
+              currentQuiz.explanation ||
+              "No hearts left. Wait for a heart to recover before you try again.",
+            correctOption: result.correctOption ?? current?.correctOption,
+            correctAnswer:
+              typeof result.correctOption === "number"
+                ? currentQuiz.options[result.correctOption]
+                : (current?.correctAnswer ?? null),
+            heartsRemaining:
+              result.heartState?.hearts ?? result.heartsRemaining,
+          }));
+          setShowHeartGate(true);
+        } else if (
+          typeof result.heartState?.hearts === "number" ||
+          typeof result.heartsRemaining === "number"
+        ) {
+          setQuizFeedback((current) =>
+            current
+              ? {
+                  ...current,
+                  heartsRemaining:
+                    result.heartState?.hearts ?? result.heartsRemaining,
+                }
+              : current,
+          );
+        }
+
+        return;
+      }
+
       if (result.attempt?.isCorrect) {
-        await playEffect("success");
+        await playSongEffect(require("@/assets/SongEffects/Correct.mp3"), 0.8);
         setQuizFeedback({
           kind: "correct",
           message: currentQuiz.explanation || "Correct. You can move on.",
+          correctOption: result.correctOption,
+          correctAnswer:
+            typeof result.correctOption === "number"
+              ? currentQuiz.options[result.correctOption]
+              : null,
           heartsRemaining: result.heartState?.hearts,
         });
         setQuizSessionId(null);
         return;
+      }
+
+      if (typeof result.correctOption === "number") {
+        setQuizQueue((current) => [...current, currentQuiz]);
       }
 
       if ((result.heartState?.hearts ?? result.heartsRemaining) <= 0) {
@@ -253,6 +447,11 @@ export default function ChapterQuizPage() {
           message:
             currentQuiz.explanation ||
             "No hearts left. Wait for a heart to recover before you try again.",
+          correctOption: result.correctOption,
+          correctAnswer:
+            typeof result.correctOption === "number"
+              ? currentQuiz.options[result.correctOption]
+              : null,
           heartsRemaining: result.heartState?.hearts ?? result.heartsRemaining,
         });
         setQuizSessionId(null);
@@ -260,10 +459,18 @@ export default function ChapterQuizPage() {
         return;
       }
 
-      await playEffect("pause");
+      await playSongEffect(require("@/assets/SongEffects/fail.mp3"), 0.6);
+      setQuizSessionId(null);
       setQuizFeedback({
         kind: "incorrect",
-        message: "Not quite. Try again before moving to the next quiz.",
+        message:
+          currentQuiz.explanation ||
+          "Not quite. This one will return at the end.",
+        correctOption: result.correctOption,
+        correctAnswer:
+          typeof result.correctOption === "number"
+            ? currentQuiz.options[result.correctOption]
+            : null,
         heartsRemaining: result.heartState?.hearts ?? result.heartsRemaining,
       });
     } catch (err) {
@@ -271,11 +478,6 @@ export default function ChapterQuizPage() {
     } finally {
       setQuizSubmitting(false);
     }
-  }
-
-  async function submitSelectedAnswer() {
-    if (selectedOption === null) return;
-    await submitQuizAnswer(selectedOption);
   }
 
   async function handleAdvanceQuiz() {
@@ -286,13 +488,18 @@ export default function ChapterQuizPage() {
 
     setCurrentQuizIndex((value) => value + 1);
     setQuizSessionId(null);
+    sessionRequestRef.current = null;
     setQuizFeedback(null);
     setSelectedOption(null);
   }
 
   function leaveQuiz() {
     if (lessonSlug) {
-      router.replace(`/lesson/${lessonSlug}`);
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace(`/lesson/${lessonSlug}`);
+      }
       return;
     }
 
@@ -315,52 +522,31 @@ export default function ChapterQuizPage() {
     );
   }
 
-  const footerAction =
-    quizFeedback?.kind === "correct"
-      ? {
-          label:
-            currentQuizIndex >= chapterQuizzes.length - 1
-              ? "Finish quiz"
-              : "Next quiz",
-          style: styles.footerButtonSuccess,
-          onPress: () => void handleAdvanceQuiz(),
-          disabled: false,
-        }
-      : quizFeedback?.kind === "incorrect"
-        ? {
-            label: "Try again",
-            style: styles.footerButtonDanger,
-            onPress: () => {
-              setQuizFeedback(null);
-              setSelectedOption(null);
-            },
-            disabled: false,
-          }
-        : quizFeedback?.kind === "failed"
-          ? {
-              label: hasHearts ? "Start again" : "Out of hearts",
-              style: hasHearts
-                ? styles.footerButtonDanger
-                : styles.footerButtonDisabled,
-              onPress: () => {
-                if (!hasHearts) {
-                  setShowHeartGate(true);
-                  return;
-                }
-                setQuizSessionId(null);
-                setQuizFeedback(null);
-                setSelectedOption(null);
-              },
-              disabled: !hasHearts,
-            }
-          : {
-              label: "Validate answer",
-              style: canValidate
-                ? styles.footerButtonPrimary
-                : styles.footerButtonDisabled,
-              onPress: () => void submitSelectedAnswer(),
-              disabled: !canValidate,
-            };
+  const footerAction = quizFeedback
+    ? {
+        label:
+          currentQuizIndex >= chapterQuizzes.length - 1
+            ? "Finish quiz"
+            : "Next quiz",
+        style:
+          quizFeedback.kind === "correct"
+            ? styles.footerButtonSuccess
+            : quizFeedback.kind === "failed" && !hasHearts
+              ? styles.footerButtonDisabled
+              : styles.footerButtonPrimary,
+        onPress: () => void handleAdvanceQuiz(),
+        disabled:
+          quizSubmitting || (quizFeedback.kind === "failed" && !hasHearts),
+      }
+    : {
+        label: selectedOption === null ? "Choose an answer" : "Checking...",
+        style:
+          selectedOption === null && !quizSubmitting
+            ? styles.footerButtonDisabled
+            : styles.footerButtonPrimary,
+        onPress: () => undefined,
+        disabled: true,
+      };
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -421,13 +607,20 @@ export default function ChapterQuizPage() {
             {currentQuiz.options.map((option, index) => (
               <Pressable
                 key={`${currentQuiz.id}-${index}`}
-                onPress={() => setSelectedOption(index)}
+                onPress={() => void submitQuizAnswer(index)}
                 disabled={quizSubmitting || Boolean(quizFeedback)}
                 style={({ pressed }) => [
                   styles.optionCard,
                   isTrueFalse && styles.optionCardTrueFalse,
                   isImageChoice && styles.optionCardImageChoice,
                   selectedOption === index && styles.optionCardSelected,
+                  hasAnswered &&
+                    quizFeedback?.correctOption === index &&
+                    styles.optionCardCorrect,
+                  hasAnswered &&
+                    selectedOption === index &&
+                    quizFeedback?.kind !== "correct" &&
+                    styles.optionCardIncorrect,
                   pressed && !quizSubmitting ? styles.optionCardPressed : null,
                 ]}
               >
@@ -436,7 +629,7 @@ export default function ChapterQuizPage() {
                     uri={optionImages[index] ?? undefined}
                     label={option}
                     selected={selectedOption === index}
-                    isCorrect={quizFeedback?.kind === "correct"}
+                    isCorrect={quizFeedback?.correctOption === index}
                   />
                 ) : (
                   <Text
@@ -452,39 +645,43 @@ export default function ChapterQuizPage() {
             ))}
           </View>
 
-          {quizFeedback ? (
-            <View
-              style={[
-                styles.feedback,
-                quizFeedback.kind === "correct"
-                  ? styles.feedbackCorrect
-                  : quizFeedback.kind === "failed"
-                    ? styles.feedbackFailed
-                    : styles.feedbackNeutral,
-              ]}
-            >
-              <Text style={styles.feedbackText}>{quizFeedback.message}</Text>
-              {typeof quizFeedback.heartsRemaining === "number" ? (
-                <Text style={styles.feedbackMeta}>
-                  {`Hearts left: ${quizFeedback.heartsRemaining}`}
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
-
           <Text style={styles.helperText}>
             {quizFeedback
               ? quizFeedback.kind === "correct"
                 ? "Nice. You can move to the next quiz."
-                : "Review the feedback, then use the button below."
+                : "This question will come back at the end."
               : selectedOption === null
-                ? "Choose one answer to validate."
-                : "Tap validate answer when you are ready."}
+                ? "Choose one answer."
+                : "Checking your answer..."}
           </Text>
         </View>
       </ScrollView>
 
       <View style={[styles.footerDock, { paddingBottom: insets.bottom + 12 }]}>
+        {quizFeedback ? (
+          <View
+            style={[
+              styles.feedback,
+              quizFeedback.kind === "correct"
+                ? styles.feedbackCorrect
+                : quizFeedback.kind === "failed"
+                  ? styles.feedbackFailed
+                  : styles.feedbackNeutral,
+            ]}
+          >
+            {quizFeedback.kind !== "correct" && quizFeedback.correctAnswer ? (
+              <Text style={styles.feedbackAnswer}>
+                {`Correct answer: ${quizFeedback.correctAnswer}`}
+              </Text>
+            ) : null}
+            <Text style={styles.feedbackText}>{quizFeedback.message}</Text>
+            {typeof quizFeedback.heartsRemaining === "number" ? (
+              <Text style={styles.feedbackMeta}>
+                {`Hearts left: ${quizFeedback.heartsRemaining}`}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
         {quizSubmitting ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={storyTheme.navy} />
@@ -731,6 +928,14 @@ const styles = StyleSheet.create({
     borderColor: storyTheme.navy,
     backgroundColor: "#eef4ff",
   },
+  optionCardCorrect: {
+    borderColor: storyTheme.mint,
+    backgroundColor: "#e8f8eb",
+  },
+  optionCardIncorrect: {
+    borderColor: "#d84c4c",
+    backgroundColor: "#ffe8e8",
+  },
   optionCardPressed: {
     opacity: 0.9,
   },
@@ -810,6 +1015,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: "700",
   },
+  feedbackAnswer: {
+    color: storyTheme.ink,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "900",
+  },
   feedbackMeta: {
     color: storyTheme.inkSoft,
     fontSize: 13,
@@ -835,6 +1046,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(246, 237, 220, 0.97)",
     borderTopWidth: 1,
     borderTopColor: storyTheme.line,
+    gap: 10,
   },
   footerButtonBase: {
     minHeight: 56,

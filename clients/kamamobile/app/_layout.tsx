@@ -11,17 +11,29 @@ import {
 } from "@react-navigation/native";
 import { useEffect } from "react";
 import "react-native-reanimated";
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
 import {
   createRewardedAd,
   getRewardedAdTestId,
 } from "@/lib/ads/google-mobile-ads";
 import { AudioPreferencesProvider } from "@/lib/audio/audio-preferences-context";
 import { ProfilePreferencesProvider } from "@/lib/profile/profile-preferences-context";
+import { TabBarVisibilityProvider } from "@/components/navigation/tab-bar-visibility";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   useEffect(() => {
+    void Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+      shouldDuckAndroid: false,
+      playThroughEarpieceAndroid: false,
+    }).catch(() => undefined);
+
     const testAdUnitId = getRewardedAdTestId();
     if (!testAdUnitId) {
       return;
@@ -41,8 +53,19 @@ export default function RootLayout() {
         <AudioPreferencesProvider>
           <AuthProvider>
             <ProfilePreferencesProvider>
-              <Stack screenOptions={{ headerShown: false }} />
-              <StatusBar style="auto" />
+              <TabBarVisibilityProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen
+                    name="lessons"
+                    options={{
+                      presentation: "formSheet",
+                      contentStyle: { backgroundColor: "transparent" },
+                    }}
+                  />
+                </Stack>
+                <StatusBar style="auto" />
+              </TabBarVisibilityProvider>
             </ProfilePreferencesProvider>
           </AuthProvider>
         </AudioPreferencesProvider>

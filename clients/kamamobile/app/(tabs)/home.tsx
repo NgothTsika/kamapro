@@ -30,6 +30,24 @@ import {
 
 type ActiveModal = "hearts" | null;
 
+function openLesson(
+  router: ReturnType<typeof useRouter>,
+  lesson: {
+    slug: string;
+    title: string;
+    coverImage?: string | null;
+  },
+) {
+  router.push({
+    pathname: "/lesson/[slug]",
+    params: {
+      slug: lesson.slug,
+      lessonTitle: lesson.title,
+      lessonCoverImage: lesson.coverImage ?? undefined,
+    },
+  });
+}
+
 function truncateDisplayName(name?: string | null, limit: number = 16) {
   if (!name) {
     return "Explorer";
@@ -292,6 +310,41 @@ function BrowseLegendsCard({ onPress }: { onPress: () => void }) {
   );
 }
 
+function BrowseLessonsCard({
+  lessonCount,
+  onPress,
+}: {
+  lessonCount: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.browseLessonsCard,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={styles.browseLessonsIcon}>
+        <MaterialIcons name="menu-book" size={26} color={storyTheme.white} />
+      </View>
+      <View style={styles.browseLessonsBody}>
+        <Text style={styles.browseLessonsEyebrow}>Lesson Library</Text>
+        <Text style={styles.browseLessonsTitle}>Explore all story lessons</Text>
+        <Text style={styles.browseLessonsCopy}>
+          {lessonCount > 0
+            ? `${lessonCount} lessons are ready on the dedicated lessons page.`
+            : "Open the full lessons page when you are ready to start."}
+        </Text>
+      </View>
+      <View style={styles.browseLessonsButton}>
+        <Text style={styles.browseLessonsButtonText}>View all</Text>
+        <MaterialIcons name="arrow-forward" size={17} color={storyTheme.plum} />
+      </View>
+    </Pressable>
+  );
+}
+
 function MetricModal({
   visible,
   title,
@@ -414,13 +467,6 @@ export default function HomeScreen() {
   const streak = dashboard?.streak?.currentStreak ?? user?.streak ?? 0;
   const continueLesson = inProgressLessons[0] ?? null;
   const fallbackLesson = lessons[0] ?? null;
-  const recommendedLessons = useMemo(
-    () =>
-      lessons
-        .filter((lesson) => lesson.id !== continueLesson?.lesson.id)
-        .slice(0, 3),
-    [continueLesson?.lesson.id, lessons],
-  );
   const progressLabel = continueLesson
     ? `Chapter ${continueLesson.chapter.order}`
     : "Fresh story";
@@ -497,7 +543,7 @@ export default function HomeScreen() {
             <HeaderMetricChip
               icon="local-fire-department"
               label="Streak"
-              value=""
+              value={`${streak}`}
               accent={streak > 0 ? storyTheme.mint : "#c0c0c0"}
               onPress={() => router.push("/streak")}
             />
@@ -570,7 +616,7 @@ export default function HomeScreen() {
                     key={item.id}
                     lesson={item.lesson}
                     progressText={`Chapter ${item.chapter.order}`}
-                    onPress={() => router.push(`/lesson/${item.lesson.slug}`)}
+                    onPress={() => openLesson(router, item.lesson)}
                   />
                 ))}
               </ScrollView>
@@ -580,7 +626,7 @@ export default function HomeScreen() {
                 label="Featured"
                 cta="Open Lesson"
                 progressText={progressLabel}
-                onPress={() => router.push(`/lesson/${fallbackLesson.slug}`)}
+                onPress={() => openLesson(router, fallbackLesson)}
               />
             ) : null}
           </View>
@@ -593,100 +639,17 @@ export default function HomeScreen() {
               label="Ready now"
               cta="Resume Lesson"
               progressText={progressLabel}
-              onPress={() =>
-                router.push(`/lesson/${continueLesson.lesson.slug}`)
-              }
+              onPress={() => openLesson(router, continueLesson.lesson)}
             />
           </View>
         ) : null}
 
-        {recommendedLessons.length > 0 ? (
-          <View style={styles.sectionBlock}>
-            <SectionHeader
-              eyebrow="Story Feed"
-              title="High-value lessons for today"
-              copy="A tighter row of lessons gives you more ways to continue without overwhelming the home page."
-            />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.lessonRail}
-            >
-              {recommendedLessons.map((lesson) => (
-                <Pressable
-                  key={lesson.id}
-                  onPress={() => router.push(`/lesson/${lesson.slug}`)}
-                  style={({ pressed }) => [
-                    styles.storyFeedCard,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <ImageBackground
-                    source={
-                      lesson.coverImage ? { uri: lesson.coverImage } : undefined
-                    }
-                    style={styles.storyFeedHero}
-                    imageStyle={styles.storyFeedImage}
-                  >
-                    <View style={styles.storyFeedShade} />
-                  </ImageBackground>
-                  <View style={styles.storyFeedBody}>
-                    <Text style={styles.storyFeedTitle}>{lesson.title}</Text>
-                    <Text style={styles.storyFeedCopy} numberOfLines={3}>
-                      {lesson.hook ||
-                        lesson.description ||
-                        "A chaptered story lesson designed to keep your momentum steady."}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-
-        {lessons.length > 0 ? (
-          <View style={styles.sectionBlock}>
-            <SectionHeader
-              eyebrow="Library"
-              title="All lessons"
-              copy="Browse all available lessons and continue your learning journey."
-            />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.lessonRail}
-            >
-              {lessons.map((lesson) => (
-                <Pressable
-                  key={lesson.id}
-                  onPress={() => router.push(`/lesson/${lesson.slug}`)}
-                  style={({ pressed }) => [
-                    styles.storyFeedCard,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <ImageBackground
-                    source={
-                      lesson.coverImage ? { uri: lesson.coverImage } : undefined
-                    }
-                    style={styles.storyFeedHero}
-                    imageStyle={styles.storyFeedImage}
-                  >
-                    <View style={styles.storyFeedShade} />
-                  </ImageBackground>
-                  <View style={styles.storyFeedBody}>
-                    <Text style={styles.storyFeedTitle}>{lesson.title}</Text>
-                    <Text style={styles.storyFeedCopy} numberOfLines={3}>
-                      {lesson.hook ||
-                        lesson.description ||
-                        "A chaptered story lesson designed to keep your momentum steady."}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
+        <View style={styles.sectionBlock}>
+          <BrowseLessonsCard
+            lessonCount={lessons.length}
+            onPress={() => router.push({ pathname: "/lessons" })}
+          />
+        </View>
       </ScrollView>
 
       <MetricModal
@@ -698,19 +661,6 @@ export default function HomeScreen() {
         onClose={() => setActiveModal(null)}
       >
         <View style={styles.modalBody}>
-          <View style={styles.infoCard}>
-            <Text style={styles.infoCardTitle}>Heart status</Text>
-            <Text style={styles.infoCardCopy}>
-              {dashboard?.hearts?.isPremium
-                ? "Premium users skip the wait and keep learning without heart limits."
-                : hearts === 0
-                  ? "You are out of hearts. The fastest recovery path is a rewarded ad or waiting for the next refill."
-                  : hearts < maxHearts
-                    ? "You still have energy to learn, and you can top up when needed."
-                    : "You are fully stocked. This is a great time to chain a lesson and a quiz."}
-            </Text>
-          </View>
-
           <View style={styles.modalStatsRow}>
             <View style={styles.modalStat}>
               <Text style={styles.modalStatValue}>
@@ -1197,6 +1147,47 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontWeight: "600",
   },
+  libraryLessonsStack: {
+    gap: 14,
+  },
+  libraryLessonCard: {
+    backgroundColor: storyTheme.paperSoft,
+    borderRadius: 26,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: storyTheme.line,
+  },
+  libraryLessonCardLocked: {
+    opacity: 0.68,
+  },
+  libraryLessonHero: {
+    height: 178,
+    padding: 14,
+    justifyContent: "space-between",
+    backgroundColor: storyTheme.plumDark,
+  },
+  libraryLessonImage: {
+    resizeMode: "cover",
+  },
+  libraryLessonShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(31, 5, 28, 0.3)",
+  },
+  lockPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(15, 23, 42, 0.72)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  lockPillText: {
+    color: storyTheme.white,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
   collectionsStack: {
     gap: 14,
   },
@@ -1339,6 +1330,57 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontWeight: "600",
   },
+  browseLessonsCard: {
+    backgroundColor: storyTheme.plum,
+    borderRadius: 28,
+    padding: 18,
+    gap: 14,
+  },
+  browseLessonsIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  browseLessonsBody: {
+    gap: 6,
+  },
+  browseLessonsEyebrow: {
+    color: "#f5d78f",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  browseLessonsTitle: {
+    color: storyTheme.white,
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "900",
+  },
+  browseLessonsCopy: {
+    color: "#ead9ef",
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: "600",
+  },
+  browseLessonsButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: storyTheme.white,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+  },
+  browseLessonsButtonText: {
+    color: storyTheme.plum,
+    fontSize: 14,
+    fontWeight: "900",
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(17, 24, 39, 0.2)",
@@ -1354,7 +1396,7 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     gap: 16,
     width: "100%",
-    maxHeight: "70%",
+    maxHeight: "50%",
   },
   modalContent: {
     gap: 16,

@@ -1,5 +1,7 @@
 import Constants from "expo-constants";
+import { useState } from "react";
 import { Alert, StyleSheet, Text } from "react-native";
+import { LanguageAudioSettings } from "@/components/settings/LanguageAudioSettings";
 import {
   SettingsRow,
   SettingsScreenShell,
@@ -13,6 +15,7 @@ import { useRouter } from "expo-router";
 
 export default function SettingsIndexScreen() {
   const router = useRouter();
+  const [soundSettingsVisible, setSoundSettingsVisible] = useState(false);
   const { signOut } = useAuth();
   const { subscriptionTier, contentPreferences, updateContentPreferences } =
     useProfilePreferences();
@@ -40,6 +43,12 @@ export default function SettingsIndexScreen() {
       </SettingsSection>
 
       <SettingsSection title="Content">
+        <SettingsRow
+          icon="volume-up"
+          title="Sounds and voice"
+          detail="Adjust reading voice, delay, narration, effects, and story music."
+          onPress={() => setSoundSettingsVisible(true)}
+        />
         <ToggleRow
           icon="notifications-active"
           title="Notifications"
@@ -135,6 +144,10 @@ export default function SettingsIndexScreen() {
       </SettingsSection>
 
       <Text style={styles.versionText}>App version {appVersion}</Text>
+      <LanguageAudioSettings
+        visible={soundSettingsVisible}
+        onClose={() => setSoundSettingsVisible(false)}
+      />
     </SettingsScreenShell>
   );
 }

@@ -9,6 +9,10 @@ import { QuizStep } from "@/components/steps/QuizStep";
 import { RecapStep } from "@/components/steps/RecapStep";
 import { TextAudioStep } from "@/components/steps/TextAudioStep";
 import { TextStep } from "@/components/steps/TextStep";
+import {
+  getParagraphs,
+  StoryParagraphSlider,
+} from "@/components/steps/story-ui";
 
 interface Props {
   step: ChapterStep;
@@ -18,7 +22,15 @@ interface Props {
   useFixedFooter?: boolean;
   onAudioStart?: () => void;
   onAudioFinished?: () => void;
+  pauseAudioSignal?: number;
+  resumeAudioSignal?: number;
+  stopAudioSignal?: number;
   mediaUrl?: string;
+  readingEnabled?: boolean;
+  onParagraphSlidesStateChange?: (state: {
+    hasSlides: boolean;
+    completed: boolean;
+  }) => void;
 }
 
 export function StepRenderer({
@@ -29,7 +41,18 @@ export function StepRenderer({
   useFixedFooter = false,
   onAudioStart,
   onAudioFinished,
+  pauseAudioSignal,
+  resumeAudioSignal,
+  stopAudioSignal,
+  readingEnabled = true,
+  onParagraphSlidesStateChange,
 }: Props) {
+  const paragraphSlideSource = [
+    step.content?.paragraphSlides,
+    step.content?.slides,
+  ];
+  const hasParagraphSlides = getParagraphs(paragraphSlideSource).length > 1;
+
   return (
     <View style={styles.stepContainer}>
       {step.type === "TEXT" && (
@@ -37,6 +60,7 @@ export function StepRenderer({
           content={step.content}
           onComplete={onStepComplete}
           showAction={!useFixedFooter}
+          hideBody={hasParagraphSlides}
         />
       )}
 
@@ -48,6 +72,11 @@ export function StepRenderer({
           showAction={!useFixedFooter}
           onAudioStart={onAudioStart}
           onAudioFinished={onAudioFinished}
+          pauseAudioSignal={pauseAudioSignal}
+          resumeAudioSignal={resumeAudioSignal}
+          stopAudioSignal={stopAudioSignal}
+          hideBody={hasParagraphSlides}
+          readingEnabled={readingEnabled}
         />
       )}
 
@@ -58,6 +87,7 @@ export function StepRenderer({
           onComplete={onStepComplete}
           showAction={!useFixedFooter}
           showMedia={!useFixedFooter}
+          hideBody={hasParagraphSlides}
         />
       )}
 
@@ -112,6 +142,15 @@ export function StepRenderer({
           showAction={!useFixedFooter}
         />
       )}
+
+      <StoryParagraphSlider
+        slides={paragraphSlideSource}
+        onStateChange={onParagraphSlidesStateChange}
+        readingEnabled={readingEnabled}
+        pauseAudioSignal={pauseAudioSignal}
+        resumeAudioSignal={resumeAudioSignal}
+        stopAudioSignal={stopAudioSignal}
+      />
     </View>
   );
 }

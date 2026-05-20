@@ -16,6 +16,15 @@ export type ChapterStep = {
   content: Record<string, any>;
   mediaUrl?: string | null;
   mediaType?: "image" | "video" | "none" | null;
+  plainText?: string;
+  backgroundMusic?: Record<string, any> | null;
+  soundEffects?: Array<Record<string, any>> | null;
+  narration?: Record<string, any> | null;
+  backgroundMusicUrl?: string | null;
+  backgroundMusicVolume?: number;
+  narrationUrl?: string | null;
+  narrationSpeed?: number;
+  narrationVolume?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -27,6 +36,7 @@ export type Chapter = {
   coverImage?: string | null;
   order: number;
   introText?: string | null;
+  introParagraphSlides?: unknown;
   introAudioUrl?: string | null;
   steps: ChapterStep[];
   quizzes?: Array<{
@@ -36,6 +46,7 @@ export type Chapter = {
     question: string;
     options: string[];
     optionImages?: string[] | null;
+    correctOption?: number | null;
     explanation: string | null;
     heartLimit: number;
     timeLimitSeconds: number | null;
